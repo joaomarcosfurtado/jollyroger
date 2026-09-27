@@ -70,7 +70,7 @@ The code follows Diplomat (ports and adapters) as documented in
 | logic | `internal/logic/{eval,snapshot,validate,pagination}` | pure functions |
 | controller | `internal/controller` | one file per use case, `(T, error)` |
 | wire | `internal/wire/{in,out,db}` | boundary shapes |
-| adapter | `internal/adapter/{http,db}` | the only wire <-> model translation |
+| adapter | `internal/adapter/{api,db}` | the only wire <-> model translation |
 | diplomat | `internal/diplomat/{postgres,sqlite,memory,migrate,cache,ui}` | I/O |
 | diplomat entry points | `internal/diplomat/{httpserver,poller}` | drive controllers |
 | composition roots | root `jollyroger`, `cmd/jollyroger`, `jollyrogertest` | wiring, public API |
@@ -92,6 +92,10 @@ live in the separate `examples/` module. The core module depends on the standard
 
 Three versioned public contracts live in `protocol/`: the storage read contract, the evaluation
 spec with `testdata/vectors.json`, and `openapi.yaml`. SDKs never write and never migrate.
+
+Refinements made while planning M1: compiling and evaluating a snapshot are one concern, so
+`logic/snapshot` is part of `logic/eval`; and the HTTP translation package is `adapter/api`,
+because a package named `http` would shadow `net/http` wherever both are used.
 
 ## 3. Public Go API
 
@@ -342,12 +346,12 @@ distroless Docker image runs `serve`.
 
 | Milestone | Scope |
 |---|---|
-| M1 Core | `model`, `logic/eval`, `logic/snapshot`, `logic/validate`, vectors, benchmarks |
+| M1 Core | `model`, `logic/eval`, `logic/validate`, vectors, benchmarks |
 | M2 Storage | ports, `wire/db`, `adapter/db`, migrations, postgres + sqlite + memory, `storetest`, audit trigger, revision |
 | M3 Client | root facade, cache, poller, failure semantics, `jollyrogertest`, multi-instance test |
 | M4 Controllers + audit | use cases, optimistic concurrency, archive/restore, keyset pagination |
 | M5 Auth | host auth, built-in users, sessions, CSRF, lockout, RBAC, tokens |
-| M6 HTTP API v1 | `wire/in`/`out`, `adapter/http`, handlers, error registry, OpenAPI tests |
+| M6 HTTP API v1 | `wire/in`/`out`, `adapter/api`, handlers, error registry, OpenAPI tests |
 | M7 Dashboard | `diplomat/ui`, htmx |
 | M8 v0.1.0 | CLI, Docker, examples, contrib modules, security harness pass, docs, release |
 | Later | rollout, targeting, segments, schedules, variants, LISTEN/NOTIFY, SSE, OpenFeature provider, stale-flag detection, SDKs |

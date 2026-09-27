@@ -46,7 +46,7 @@ HTTP / CLI / poller (entry points, internal/diplomat/httpserver, cmd/, internal/
 - **Logic** (`internal/logic/...`): pure functions. No I/O, no clock reads, no logging.
 - **Controller** (`internal/controller`): orchestration. Never sees HTTP, SQL, or wire structs.
 - **Wire** (`internal/wire/{in,out,db}`): boundary shapes. Stdlib only.
-- **Adapter** (`internal/adapter/{http,db}`): pure wire <-> model translation.
+- **Adapter** (`internal/adapter/{api,db}`): pure wire <-> model translation.
 - **Diplomat** (`internal/diplomat/...`): all I/O (stores, migrations, HTTP server, UI, poller, cache).
 - **Root package** `jollyroger` + `cmd/jollyroger`: composition roots and the public facade.
 

@@ -8,6 +8,11 @@ contain breaking changes; they are listed under `### Breaking`.
 ## [Unreleased]
 
 ### Added
+- Evaluation engine: compiled, immutable snapshots evaluated with zero allocations; deterministic
+  SHA-256 bucketing.
+- Protocol: `protocol/evaluation-spec.md` and `protocol/testdata/vectors.json`, the cases every
+  SDK must pass.
+- Input validation for flag keys, environment keys, names, descriptions, reasons and configs.
 - Design document for v0.1.0 (`docs/superpowers/specs/2026-09-26-jollyroger-design.md`).
 - Repository bootstrap: engineering rules (`CLAUDE.md`), contributor skills (`docs/skills`),
   architecture import guard (`internal/archtest`), CI (build, vet, race, integration, lint,

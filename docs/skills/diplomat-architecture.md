@@ -6,7 +6,7 @@ ports and adapters), translated to Go idioms.
 
 ## Rules
 - **MUST** route every request through the full path: `wire/in` (decode + `Validate()`) ->
-  `adapter/http` -> `controller` -> (`logic` / model ports) -> `adapter/http` -> `wire/out` ->
+  `adapter/api` -> `controller` -> (`logic` / model ports) -> `adapter/api` -> `wire/out` ->
   JSON encoder or `diplomat/ui` template.
 - **MUST** keep model types (`internal/model`) as the only shapes `controller/` and `logic/` see.
   They never see an `*http.Request`, a `*sql.Rows`, or a wire struct.
@@ -35,7 +35,7 @@ internal/
   wire/in/                 BOUNDARY: untrusted request shapes + Validate()
   wire/out/                BOUNDARY: response + view shapes (asserted in adapter tests)
   wire/db/                 BOUNDARY: row scan targets per table
-  adapter/http/            TRANSLATION: wire/in -> model command, model -> wire/out
+  adapter/api/            TRANSLATION: wire/in -> model command, model -> wire/out
   adapter/db/              TRANSLATION: wire/db row -> model, model -> SQL args
   diplomat/                I/O: postgres, sqlite, memory, migrate, httpserver, ui, poller, cache
 storetest/                 PUBLIC conformance suite every store runs
@@ -47,12 +47,12 @@ jollyrogertest/            PUBLIC test helper for adopters (fixed flags, no DB)
 ```
 HTTP request
   -> diplomat/httpserver handler decodes into wire/in.X, calls X.Validate()   (fail closed: 400/422)
-  -> adapter/http.XToCommand(wireIn)                                           (pure)
+  -> adapter/api.XToCommand(wireIn)                                           (pure)
   -> controller.DoX(ctx, deps, cmd) (T, error)
        -> logic.* (pure decisions)
        -> model port (FlagStore.InTx ...) implemented in diplomat/postgres
             -> SQL -> wire/db row -> adapter/db.RowToFlag(row) -> model.Flag
-  -> adapter/http.FlagToOut(model)  -> wire/out.Flag -> json.Encoder / ui template
+  -> adapter/api.FlagToOut(model)  -> wire/out.Flag -> json.Encoder / ui template
 ```
 
 Three invariants that must never break:
@@ -106,7 +106,7 @@ standard library: `database/sql`, `net`, `net/http`, `os`, `os/exec`, `syscall`,
 3. `adapter/db` BOTH directions (row -> model and model -> args)
 4. `model` entity field
 5. controller command/result
-6. `wire/in` field + `Validate()`, `adapter/http` both directions, `wire/out` field
+6. `wire/in` field + `Validate()`, `adapter/api` both directions, `wire/out` field
 7. `protocol/openapi.yaml`, and `protocol/storage-contract.md` if SDKs may read it
 8. `storetest` round-trip case; adapter tests assert the full shape with exact equality
 
