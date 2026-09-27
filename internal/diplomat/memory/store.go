@@ -1,7 +1,8 @@
 // Package memory is an in-memory model.FlagStore for tests (jollyroger's own, and adopters'
 // through jollyrogertest). It must behave exactly like the SQL stores: it passes the same
-// internal/storetest suite, keeps microsecond UTC times, stores audit values as JSON (numbers read
-// back as float64), and serializes transactions like a database would.
+// internal/storetest suite, keeps microsecond UTC times, passes configs and audit values through
+// JSON (numbers read back as float64), enforces unique IDs, and serializes transactions like a
+// database would.
 package memory
 
 import (
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	adb "github.com/joaomarcosfurtado/jollyroger/internal/adapter/db"
 	"github.com/joaomarcosfurtado/jollyroger/internal/model"
 )
 
@@ -225,8 +227,8 @@ func (t *tx) CreateFlag(_ context.Context, f model.NewFlag) (model.FlagWithState
 	if err != nil {
 		return model.FlagWithStates{}, err
 	}
-	if _, taken := p.flags[f.Key]; taken {
-		return model.FlagWithStates{}, fmt.Errorf("flag %q: %w", f.Key, model.ErrAlreadyExists)
+	if _, taken := p.flags[f.Key]; taken || t.d.flagIDUsed(f.ID) {
+		return model.FlagWithStates{}, fmt.Errorf("flag %q (id %s): key or id already used: %w", f.Key, f.ID, model.ErrAlreadyExists)
 	}
 	at := norm(f.At)
 	rec := &flagRecord{
@@ -285,6 +287,9 @@ func (t *tx) RestoreFlag(_ context.Context, projectKey, key string, at time.Time
 }
 
 func (t *tx) SetEnvState(_ context.Context, projectKey, key, environment string, c model.EnvStateChange, expectedVersion int64) (model.EnvState, error) {
+	if c.Config.Unparseable {
+		return model.EnvState{}, fmt.Errorf("flag %q in %q: refusing to store a config this version cannot read (it would destroy the stored rules): %w", key, environment, model.ErrInvalid)
+	}
 	p, err := t.d.project(projectKey)
 	if err != nil {
 		return model.EnvState{}, err
@@ -296,11 +301,15 @@ func (t *tx) SetEnvState(_ context.Context, projectKey, key, environment string,
 	if !p.hasEnv(environment) {
 		return model.EnvState{}, notFound("environment", environment)
 	}
+	stored, err := storedConfig(c.Config)
+	if err != nil {
+		return model.EnvState{}, err
+	}
 	cur := rec.states[environment]
 	if cur.Version != expectedVersion {
 		return model.EnvState{}, fmt.Errorf("flag %q in %q is at version %d, not %d: %w", key, environment, cur.Version, expectedVersion, model.ErrConflict)
 	}
-	next := model.EnvState{EnvironmentKey: environment, Enabled: c.Enabled, Config: cloneConfig(c.Config), Version: cur.Version + 1, UpdatedAt: norm(c.At), UpdatedBy: c.Actor}
+	next := model.EnvState{EnvironmentKey: environment, Enabled: c.Enabled, Config: stored, Version: cur.Version + 1, UpdatedAt: norm(c.At), UpdatedBy: c.Actor}
 	rec.states[environment] = next
 	return cloneState(next), nil
 }
@@ -309,6 +318,9 @@ func (t *tx) AppendAudit(_ context.Context, e model.AuditEntry) error {
 	p, err := t.d.project(e.Project)
 	if err != nil {
 		return err
+	}
+	if slices.ContainsFunc(p.audit, func(a model.AuditEntry) bool { return a.ID == e.ID }) {
+		return fmt.Errorf("audit id %s: %w", e.ID, model.ErrAlreadyExists)
 	}
 	stored, err := cloneAudit(e)
 	if err != nil {
@@ -326,6 +338,27 @@ func (t *tx) BumpRevision(_ context.Context, projectKey string) (int64, error) {
 	}
 	p.revision++
 	return p.revision, nil
+}
+
+// flagIDUsed reports whether any flag of any project already has id (IDs are primary keys).
+func (d *dataset) flagIDUsed(id string) bool {
+	for _, p := range d.projects {
+		for _, rec := range p.flags {
+			if rec.flag.ID == id {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// storedConfig passes a config through the stored JSON form, exactly as the SQL stores do.
+func storedConfig(c model.FlagConfig) (model.FlagConfig, error) {
+	s, err := adb.ConfigToJSON(c)
+	if err != nil {
+		return model.FlagConfig{}, err
+	}
+	return adb.ConfigFromJSON(s), nil
 }
 
 func sortedKeys(m map[string]*flagRecord) []string {

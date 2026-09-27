@@ -80,6 +80,15 @@ BEGIN
     SELECT RAISE(ABORT, 'jollyroger_audit_log is append-only');
 END;
 
+-- INSERT OR REPLACE deletes the old row WITHOUT firing delete triggers (recursive_triggers is off
+-- by default), so an insert may never reuse an existing id.
+CREATE TRIGGER IF NOT EXISTS jollyroger_audit_log_no_overwrite
+BEFORE INSERT ON jollyroger_audit_log
+WHEN EXISTS (SELECT 1 FROM jollyroger_audit_log WHERE id = NEW.id)
+BEGIN
+    SELECT RAISE(ABORT, 'jollyroger_audit_log is append-only');
+END;
+
 CREATE TRIGGER IF NOT EXISTS jollyroger_audit_log_no_delete
 BEFORE DELETE ON jollyroger_audit_log
 WHEN NOT EXISTS (SELECT 1 FROM jollyroger_audit_prune_guard WHERE id = 1 AND active = 1)

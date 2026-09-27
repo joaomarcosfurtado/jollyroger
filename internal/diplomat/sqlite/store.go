@@ -2,9 +2,10 @@
 // opened with any database/sql SQLite driver; jollyroger imports no driver. Requires SQLite 3.35+.
 //
 // Write transactions start with BEGIN IMMEDIATE so a writer takes the lock before reading (a
-// deferred transaction that reads and then writes fails at once under contention). If the host
-// left busy_timeout at SQLite's default of 0, the store raises it to 5 seconds on the connections
-// it uses, so concurrent writers wait instead of failing.
+// deferred transaction that reads and then writes fails at once under contention). Every read and
+// write runs on a connection with a busy timeout: if the host left it at SQLite's default of 0, the
+// store raises it to 5 seconds on the connections it uses (the setting stays on those pooled
+// connections), so jollyroger waits for writers instead of failing with SQLITE_BUSY.
 package sqlite
 
 import (
@@ -117,36 +118,43 @@ func (s *Store) InTx(ctx context.Context, fn func(model.FlagTx) error) error {
 // LoadSnapshot implements model.FlagStore. The revision and the flags come from one read
 // transaction, so they are consistent.
 func (s *Store) LoadSnapshot(ctx context.Context, project, environment string) (model.Snapshot, error) {
-	var snap model.Snapshot
+	return read(ctx, s, func(q querier) (model.Snapshot, error) { return loadSnapshot(ctx, q, project, environment) })
+}
+
+// read runs fn in a read transaction on a connection that waits for writers (see withConn), so a
+// read never fails with SQLITE_BUSY while jollyroger or the host commits, and its queries see
+// one consistent state.
+func read[T any](ctx context.Context, s *Store, fn func(q querier) (T, error)) (T, error) {
+	var out T
 	err := s.withConn(ctx, "BEGIN", func(q querier) error {
 		var err error
-		snap, err = loadSnapshot(ctx, q, project, environment)
+		out, err = fn(q)
 		return err
 	})
-	return snap, err
+	return out, err
 }
 
 // Revision implements model.FlagStore.
 func (s *Store) Revision(ctx context.Context, project string) (int64, error) {
-	return revision(ctx, s.db, project)
+	return read(ctx, s, func(q querier) (int64, error) { return revision(ctx, q, project) })
 }
 
 // ListEnvironments implements model.FlagStore.
 func (s *Store) ListEnvironments(ctx context.Context, project string) ([]model.Environment, error) {
-	return listEnvironments(ctx, s.db, project)
+	return read(ctx, s, func(q querier) ([]model.Environment, error) { return listEnvironments(ctx, q, project) })
 }
 
 // GetFlag implements model.FlagStore.
 func (s *Store) GetFlag(ctx context.Context, project, key string) (model.FlagWithStates, error) {
-	return getFlag(ctx, s.db, project, key)
+	return read(ctx, s, func(q querier) (model.FlagWithStates, error) { return getFlag(ctx, q, project, key) })
 }
 
 // ListFlags implements model.FlagStore.
-func (s *Store) ListFlags(ctx context.Context, q model.FlagQuery) (model.FlagPage, error) {
-	return listFlags(ctx, s.db, q)
+func (s *Store) ListFlags(ctx context.Context, fq model.FlagQuery) (model.FlagPage, error) {
+	return read(ctx, s, func(q querier) (model.FlagPage, error) { return listFlags(ctx, q, fq) })
 }
 
 // ListAudit implements model.FlagStore.
-func (s *Store) ListAudit(ctx context.Context, q model.AuditQuery) (model.AuditPage, error) {
-	return listAudit(ctx, s.db, q)
+func (s *Store) ListAudit(ctx context.Context, aq model.AuditQuery) (model.AuditPage, error) {
+	return read(ctx, s, func(q querier) (model.AuditPage, error) { return listAudit(ctx, q, aq) })
 }

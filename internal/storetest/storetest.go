@@ -36,6 +36,8 @@ func Run(t *testing.T, newStore Factory) {
 		{"SetEnvState", setEnvState},
 		{"ConcurrentSetEnvStateOneWins", concurrentSetEnvState},
 		{"ConfigRoundTrip", configRoundTrip},
+		{"UnparseableConfigIsNeverWritten", unparseableNeverWritten},
+		{"DuplicateIDsAreRejected", duplicateIDs},
 		{"UpdateFlagMeta", updateFlagMeta},
 		{"ArchiveAndRestore", archiveAndRestore},
 		{"LoadSnapshot", loadSnapshot},
@@ -339,19 +341,55 @@ func concurrentSetEnvState(t *testing.T, s model.FlagStore) {
 
 func configRoundTrip(t *testing.T, s model.FlagStore) {
 	mustCreate(t, s, "c", baseTime())
-	if _, err := setState(t, s, "c", "production", model.EnvStateChange{Enabled: true, Config: model.FlagConfig{Unparseable: true}, At: baseTime()}, 1); err != nil {
-		t.Fatal(err)
+	for i, cfg := range []model.FlagConfig{
+		{Fallthrough: model.Serve{Value: ptr(false)}},
+		{Fallthrough: model.Serve{Value: ptr(true)}},
+		{},
+	} {
+		if _, err := setState(t, s, "c", "production", model.EnvStateChange{Enabled: true, Config: cfg, At: baseTime()}, int64(i+1)); err != nil {
+			t.Fatal(err)
+		}
+		snap, err := s.LoadSnapshot(t.Context(), project, "production")
+		if err != nil || len(snap.Flags) != 1 || !reflect.DeepEqual(snap.Flags[0].Config, cfg) {
+			t.Fatalf("config %d read back as %+v, %v; want %#v", i, snap.Flags, err, cfg)
+		}
 	}
-	snap, err := s.LoadSnapshot(t.Context(), project, "production")
-	if err != nil || len(snap.Flags) != 1 || !snap.Flags[0].Config.Unparseable {
-		t.Fatalf("an unparseable config must read back as Unparseable: %+v, %v", snap, err)
+}
+
+// unparseableNeverWritten: an admin that could not read a config (written by a newer version)
+// must not be able to store the "unparseable" marker over it, which would destroy the rules for
+// every reader, newer SDKs included.
+func unparseableNeverWritten(t *testing.T, s model.FlagStore) {
+	mustCreate(t, s, "u", baseTime())
+	_, err := setState(t, s, "u", "production", model.EnvStateChange{Enabled: true, Config: model.FlagConfig{Unparseable: true}, At: baseTime()}, 1)
+	expectErr(t, "SetEnvState with an Unparseable config", err, model.ErrInvalid)
+	if st := mustGet(t, s, "u").States[2]; st.Version != 1 || st.Enabled || st.Config.Unparseable {
+		t.Fatalf("a rejected write changed the state: %#v", st)
 	}
-	if _, err := setState(t, s, "c", "production", model.EnvStateChange{Enabled: true, Config: model.FlagConfig{Fallthrough: model.Serve{Value: ptr(true)}}, At: baseTime()}, 2); err != nil {
-		t.Fatal(err)
-	}
-	snap, _ = s.LoadSnapshot(t.Context(), project, "production")
-	if want := (model.FlagConfig{Fallthrough: model.Serve{Value: ptr(true)}}); !reflect.DeepEqual(snap.Flags[0].Config, want) {
-		t.Fatalf("config = %#v, want %#v", snap.Flags[0].Config, want)
+}
+
+// duplicateIDs: IDs are primary keys in every store, so reusing one is ErrAlreadyExists, never a
+// raw driver error and never silently accepted.
+func duplicateIDs(t *testing.T, s model.FlagStore) {
+	mustCreate(t, s, "first", baseTime())
+	err := inTx(t, s, func(ctx context.Context, tx model.FlagTx) error {
+		f := newFlag("second", baseTime())
+		f.ID = "flag-first" // already used by "first"
+		_, err := tx.CreateFlag(ctx, f)
+		return err
+	})
+	expectErr(t, "CreateFlag reusing a flag ID", err, model.ErrAlreadyExists)
+	entry := model.AuditEntry{ID: "audit-dup", Project: project, ActorID: "u", ActorName: "U", Action: model.AuditFlagCreated, CreatedAt: baseTime()}
+	mustTx(t, s, func(ctx context.Context, tx model.FlagTx) error { return tx.AppendAudit(ctx, entry) })
+	err = inTx(t, s, func(ctx context.Context, tx model.FlagTx) error {
+		e := entry
+		e.Action = model.AuditPruned
+		return tx.AppendAudit(ctx, e)
+	})
+	expectErr(t, "AppendAudit reusing an audit ID", err, model.ErrAlreadyExists)
+	page, err := s.ListAudit(t.Context(), model.AuditQuery{Project: project})
+	if err != nil || len(page.Items) != 1 || page.Items[0].Action != model.AuditFlagCreated {
+		t.Fatalf("audit after a rejected duplicate = %+v, %v; want the original entry only", page.Items, err)
 	}
 }
 

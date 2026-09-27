@@ -95,7 +95,8 @@ type FlagTx interface {
 	// RestoreFlag clears the archive mark; restoring an active flag changes nothing.
 	RestoreFlag(ctx context.Context, project, key string, at time.Time) (Flag, error)
 	// SetEnvState replaces the state in one environment if its version is expectedVersion
-	// (ErrConflict otherwise) and returns the new state, whose version is expectedVersion+1.
+	// (ErrConflict otherwise) and returns the new state, whose version is expectedVersion+1. An
+	// Unparseable config is ErrInvalid: storing it would destroy rules a newer version wrote.
 	SetEnvState(ctx context.Context, project, key, environment string, c EnvStateChange, expectedVersion int64) (EnvState, error)
 	// AppendAudit records an audit entry. There is no way to change or delete one.
 	AppendAudit(ctx context.Context, e AuditEntry) error

@@ -28,7 +28,7 @@ func (t *tx) CreateFlag(ctx context.Context, f model.NewFlag) (model.FlagWithSta
 	}
 	at := adb.NormalizeTime(f.At)
 	res, err := t.q.ExecContext(ctx, t.s.sql(`INSERT INTO {schema}.jollyroger_flags (id, project_id, key, name, description, kind, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $7) ON CONFLICT (project_id, key) DO NOTHING`),
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $7) ON CONFLICT DO NOTHING`),
 		f.ID, pid, f.Key, f.Name, f.Description, string(f.Kind), at)
 	if err != nil {
 		return model.FlagWithStates{}, fmt.Errorf("postgres: create flag %q: %w", f.Key, err)
@@ -38,7 +38,7 @@ func (t *tx) CreateFlag(ctx context.Context, f model.NewFlag) (model.FlagWithSta
 		return model.FlagWithStates{}, fmt.Errorf("postgres: create flag %q: %w", f.Key, err)
 	}
 	if n == 0 {
-		return model.FlagWithStates{}, fmt.Errorf("flag %q: %w", f.Key, model.ErrAlreadyExists)
+		return model.FlagWithStates{}, fmt.Errorf("flag %q (id %s): key or id already used: %w", f.Key, f.ID, model.ErrAlreadyExists)
 	}
 	config, err := adb.ConfigToJSON(model.FlagConfig{})
 	if err != nil {
@@ -85,6 +85,9 @@ func (t *tx) updateFlag(ctx context.Context, project, key, stmt string, args ...
 }
 
 func (t *tx) SetEnvState(ctx context.Context, project, key, environment string, c model.EnvStateChange, expectedVersion int64) (model.EnvState, error) {
+	if c.Config.Unparseable {
+		return model.EnvState{}, fmt.Errorf("flag %q in %q: refusing to store a config this version cannot read (it would destroy the stored rules): %w", key, environment, model.ErrInvalid)
+	}
 	pid, err := t.s.projectID(ctx, t.q, project)
 	if err != nil {
 		return model.EnvState{}, err
@@ -140,12 +143,20 @@ func (t *tx) AppendAudit(ctx context.Context, e model.AuditEntry) error {
 	if err != nil {
 		return err
 	}
-	if _, err := t.q.ExecContext(ctx, t.s.sql(`INSERT INTO {schema}.jollyroger_audit_log
+	res, err := t.q.ExecContext(ctx, t.s.sql(`INSERT INTO {schema}.jollyroger_audit_log
 		(id, environment_key, flag_key, actor_id, actor_name, action, before_state, after_state, reason, created_at, project_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11)`),
+		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11) ON CONFLICT (id) DO NOTHING`),
 		e.ID, adb.NullIfEmpty(e.EnvironmentKey), adb.NullIfEmpty(e.FlagKey), e.ActorID, e.ActorName, string(e.Action),
-		before, after, adb.NullIfEmpty(e.Reason), adb.NormalizeTime(e.CreatedAt), pid); err != nil {
+		before, after, adb.NullIfEmpty(e.Reason), adb.NormalizeTime(e.CreatedAt), pid)
+	if err != nil {
 		return fmt.Errorf("postgres: append audit %s: %w", e.ID, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("postgres: append audit %s: %w", e.ID, err)
+	}
+	if n == 0 {
+		return fmt.Errorf("audit id %s: %w", e.ID, model.ErrAlreadyExists)
 	}
 	return nil
 }

@@ -22,6 +22,10 @@ NOT write, and MUST NOT run migrations (the Go admin plane owns the schema).
 
 On PostgreSQL the tables live in the schema the host configured (default `public`).
 
+## SQLite readers
+Set a `busy_timeout` (for example 5000 ms) on the connection, or use WAL mode. With SQLite's
+default timeout of 0, a read fails immediately with `SQLITE_BUSY` whenever a writer is committing.
+
 ## Polling
 Read `revision` for the project; only when it changed, load the snapshot. Every write transaction
 increments the revision.

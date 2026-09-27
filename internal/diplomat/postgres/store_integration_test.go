@@ -152,6 +152,9 @@ func TestAuditLog_IsAppendOnly(t *testing.T) {
 		`UPDATE {s}.jollyroger_audit_log SET actor_name = 'Mallory'`,
 		`DELETE FROM {s}.jollyroger_audit_log`,
 		`TRUNCATE {s}.jollyroger_audit_log`,
+		`INSERT INTO {s}.jollyroger_audit_log (id, project_id, actor_id, actor_name, action, created_at)
+		 VALUES ('a1', '00000000000000000000000000', 'm', 'Mallory', 'FORGED', now())
+		 ON CONFLICT (id) DO UPDATE SET action = excluded.action`,
 	} {
 		if _, err := db.ExecContext(ctx, q(stmt)); err == nil {
 			t.Fatalf("%s must fail", stmt)

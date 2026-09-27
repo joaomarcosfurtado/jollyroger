@@ -25,7 +25,7 @@ func (t *tx) CreateFlag(ctx context.Context, f model.NewFlag) (model.FlagWithSta
 	}
 	at := adb.TextTime(f.At)
 	res, err := t.q.ExecContext(ctx, `INSERT INTO jollyroger_flags (id, project_id, key, name, description, kind, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (project_id, key) DO NOTHING`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
 		f.ID, pid, f.Key, f.Name, f.Description, string(f.Kind), at, at)
 	if err != nil {
 		return model.FlagWithStates{}, fmt.Errorf("sqlite: create flag %q: %w", f.Key, err)
@@ -35,7 +35,7 @@ func (t *tx) CreateFlag(ctx context.Context, f model.NewFlag) (model.FlagWithSta
 		return model.FlagWithStates{}, fmt.Errorf("sqlite: create flag %q: %w", f.Key, err)
 	}
 	if n == 0 {
-		return model.FlagWithStates{}, fmt.Errorf("flag %q: %w", f.Key, model.ErrAlreadyExists)
+		return model.FlagWithStates{}, fmt.Errorf("flag %q (id %s): key or id already used: %w", f.Key, f.ID, model.ErrAlreadyExists)
 	}
 	config, err := adb.ConfigToJSON(model.FlagConfig{})
 	if err != nil {
@@ -81,6 +81,9 @@ func (t *tx) updateFlag(ctx context.Context, project, key, stmt string, args ...
 }
 
 func (t *tx) SetEnvState(ctx context.Context, project, key, environment string, c model.EnvStateChange, expectedVersion int64) (model.EnvState, error) {
+	if c.Config.Unparseable {
+		return model.EnvState{}, fmt.Errorf("flag %q in %q: refusing to store a config this version cannot read (it would destroy the stored rules): %w", key, environment, model.ErrInvalid)
+	}
 	pid, err := projectID(ctx, t.q, project)
 	if err != nil {
 		return model.EnvState{}, err
@@ -131,6 +134,13 @@ func (t *tx) AppendAudit(ctx context.Context, e model.AuditEntry) error {
 	pid, err := projectID(ctx, t.q, e.Project)
 	if err != nil {
 		return err
+	}
+	var taken int
+	if err := t.q.QueryRowContext(ctx, `SELECT COUNT(*) FROM jollyroger_audit_log WHERE id = ?`, e.ID).Scan(&taken); err != nil {
+		return fmt.Errorf("sqlite: append audit %s: %w", e.ID, err)
+	}
+	if taken > 0 {
+		return fmt.Errorf("audit id %s: %w", e.ID, model.ErrAlreadyExists)
 	}
 	before, err := adb.AuditJSON(e.Before)
 	if err != nil {

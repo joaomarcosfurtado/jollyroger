@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -99,6 +100,25 @@ func TestAuditLog_IsAppendOnly(t *testing.T) {
 	}
 	if _, err := db.ExecContext(ctx, "DELETE FROM jollyroger_audit_log"); err == nil {
 		t.Fatal("DELETE on the audit log must fail while the prune guard is off")
+	}
+	// REPLACE deletes the old row without firing delete triggers (recursive_triggers is off by
+	// default), so it needs its own guard.
+	for _, stmt := range []string{
+		`INSERT OR REPLACE INTO jollyroger_audit_log (id, project_id, actor_id, actor_name, action, created_at)
+		 VALUES ('a1', '00000000000000000000000000', 'm', 'Mallory', 'FORGED', '2026-01-01T00:00:00.000000Z')`,
+		`REPLACE INTO jollyroger_audit_log (id, project_id, actor_id, actor_name, action, created_at)
+		 VALUES ('a1', '00000000000000000000000000', 'm', 'Mallory', 'FORGED', '2026-01-01T00:00:00.000000Z')`,
+		`INSERT INTO jollyroger_audit_log (id, project_id, actor_id, actor_name, action, created_at)
+		 VALUES ('a1', '00000000000000000000000000', 'm', 'Mallory', 'FORGED', '2026-01-01T00:00:00.000000Z')
+		 ON CONFLICT (id) DO UPDATE SET action = excluded.action`,
+	} {
+		if _, err := db.ExecContext(ctx, stmt); err == nil {
+			t.Fatalf("%s must fail", stmt)
+		}
+	}
+	var action string
+	if err := db.QueryRowContext(ctx, "SELECT action FROM jollyroger_audit_log WHERE id = 'a1'").Scan(&action); err != nil || action != string(model.AuditFlagCreated) {
+		t.Fatalf("audit row after forgery attempts: action %q, %v", action, err)
 	}
 	conn, err := db.Conn(ctx)
 	if err != nil {
@@ -296,5 +316,57 @@ func TestStorageContractQueryMatchesLoadSnapshot(t *testing.T) {
 	}
 	if rev != snap.Revision || !reflect.DeepEqual(got, want) {
 		t.Fatalf("contract query = rev %d %v; LoadSnapshot = rev %d %v", rev, got, snap.Revision, want)
+	}
+}
+
+func TestReadsWaitForAWriterWithoutHostBusyTimeout(t *testing.T) {
+	t.Parallel()
+	// Rollback journal (not WAL) and busy_timeout 0: a reader fails at once with SQLITE_BUSY while
+	// another connection holds an exclusive lock, unless the store makes it wait.
+	path := filepath.Join(t.TempDir(), "jr.db")
+	storeDB := openDB(t, path, "")
+	storeDB.SetMaxIdleConns(0) // every call gets a fresh connection, as a busy host pool does
+	s := migrated(t, storeDB)
+	if err := s.InTx(t.Context(), func(tx model.FlagTx) error {
+		_, err := tx.CreateFlag(t.Context(), model.NewFlag{ID: "id-r", Project: model.DefaultProject, Key: "r", Name: "r", Kind: model.KindBoolean, At: time.Now(), Actor: "t"})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	other := openDB(t, path, "")
+	reads := map[string]func() error{
+		"Revision":         func() error { _, err := s.Revision(t.Context(), model.DefaultProject); return err },
+		"ListEnvironments": func() error { _, err := s.ListEnvironments(t.Context(), model.DefaultProject); return err },
+		"GetFlag":          func() error { _, err := s.GetFlag(t.Context(), model.DefaultProject, "r"); return err },
+		"ListFlags": func() error {
+			_, err := s.ListFlags(t.Context(), model.FlagQuery{Project: model.DefaultProject, Environment: "production"})
+			return err
+		},
+		"ListAudit": func() error {
+			_, err := s.ListAudit(t.Context(), model.AuditQuery{Project: model.DefaultProject})
+			return err
+		},
+		"LoadSnapshot": func() error { _, err := s.LoadSnapshot(t.Context(), model.DefaultProject, "production"); return err },
+	}
+	for name, read := range reads {
+		holder, err := other.Conn(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := holder.ExecContext(t.Context(), "BEGIN EXCLUSIVE"); err != nil {
+			t.Fatal(err)
+		}
+		released := make(chan error, 1)
+		go func() {
+			time.Sleep(150 * time.Millisecond)
+			_, err := holder.ExecContext(t.Context(), "COMMIT")
+			released <- errors.Join(err, holder.Close())
+		}()
+		if err := read(); err != nil {
+			t.Errorf("%s must wait for the writer, not fail: %v", name, err)
+		}
+		if err := <-released; err != nil {
+			t.Fatal(err)
+		}
 	}
 }
