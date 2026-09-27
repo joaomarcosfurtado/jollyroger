@@ -1,0 +1,86 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1" # weekly: surface newly disclosed CVEs between releases
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (go ${{ matrix.go }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.26.x", "1.27.x"] # the two supported Go releases
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: jollyroger
+          POSTGRES_PASSWORD: jollyroger
+          POSTGRES_DB: jollyroger_test
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U jollyroger"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      JOLLYROGER_TEST_POSTGRES_URL: postgres://jollyroger:jollyroger@localhost:55432/jollyroger_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.go }}
+      - name: build
+        run: go build ./...
+      - name: vet
+        run: go vet ./...
+      - name: unit tests (race)
+        run: go test -race -count=1 ./...
+      - name: integration tests (PostgreSQL + SQLite)
+        run: go test -race -count=1 -tags integration ./...
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.14.0
+
+  security:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # gitleaks lists the PR's commits
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: no em-dash in text
+        run: |
+          if git grep -n $'\xe2\x80\x94' -- ':!*.sum'; then
+            echo "em-dash found; see CLAUDE.md rule 15" >&2
+            exit 1
+          fi
