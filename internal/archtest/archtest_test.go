@@ -30,7 +30,7 @@ func TestClassify(t *testing.T) {
 		{mod + "/internal/wire/db", LayerWire, true},
 		{mod + "/internal/logic/eval", LayerLogic, true},
 		{mod + "/internal/controller", LayerController, true},
-		{mod + "/internal/adapter/http", LayerAdapter, true},
+		{mod + "/internal/adapter/api", LayerAdapter, true},
 		{mod + "/internal/diplomat/postgres", LayerDiplomat, true},
 		{mod + "/internal/diplomat/httpserver", LayerDiplomatEntry, true},
 		{mod + "/internal/diplomat/httpserver/api", LayerDiplomatEntry, true},
@@ -78,7 +78,7 @@ func TestCheck_ReportsEachForbiddenCrossing(t *testing.T) {
 		want []string // expected violating imports; "" means the package itself is misplaced
 	}{
 		{"controller imports wire", Package{mod + "/internal/controller", []string{mod + "/internal/wire/in"}}, []string{mod + "/internal/wire/in"}},
-		{"controller imports adapter", Package{mod + "/internal/controller", []string{mod + "/internal/adapter/http"}}, []string{mod + "/internal/adapter/http"}},
+		{"controller imports adapter", Package{mod + "/internal/controller", []string{mod + "/internal/adapter/api"}}, []string{mod + "/internal/adapter/api"}},
 		{"controller imports diplomat", Package{mod + "/internal/controller", []string{mod + "/internal/diplomat/postgres"}}, []string{mod + "/internal/diplomat/postgres"}},
 		{"controller imports database/sql", Package{mod + "/internal/controller", []string{"database/sql"}}, []string{"database/sql"}},
 		{"controller imports net/http", Package{mod + "/internal/controller", []string{"net/http"}}, []string{"net/http"}},
@@ -88,8 +88,8 @@ func TestCheck_ReportsEachForbiddenCrossing(t *testing.T) {
 		{"model imports logic", Package{mod + "/internal/model", []string{mod + "/internal/logic/eval"}}, []string{mod + "/internal/logic/eval"}},
 		{"wire imports model", Package{mod + "/internal/wire/out", []string{mod + "/internal/model"}}, []string{mod + "/internal/model"}},
 		{"adapter imports diplomat", Package{mod + "/internal/adapter/db", []string{mod + "/internal/diplomat/postgres"}}, []string{mod + "/internal/diplomat/postgres"}},
-		{"adapter imports controller", Package{mod + "/internal/adapter/http", []string{mod + "/internal/controller"}}, []string{mod + "/internal/controller"}},
-		{"adapter does I/O", Package{mod + "/internal/adapter/http", []string{"net/http"}}, []string{"net/http"}},
+		{"adapter imports controller", Package{mod + "/internal/adapter/api", []string{mod + "/internal/controller"}}, []string{mod + "/internal/controller"}},
+		{"adapter does I/O", Package{mod + "/internal/adapter/api", []string{"net/http"}}, []string{"net/http"}},
 		{"store calls controller", Package{mod + "/internal/diplomat/postgres", []string{mod + "/internal/controller"}}, []string{mod + "/internal/controller"}},
 		{"store imports entry point", Package{mod + "/internal/diplomat/postgres", []string{mod + "/internal/diplomat/httpserver"}}, []string{mod + "/internal/diplomat/httpserver"}},
 		{"storetest imports a store", Package{mod + "/storetest", []string{mod + "/internal/diplomat/memory"}}, []string{mod + "/internal/diplomat/memory"}},

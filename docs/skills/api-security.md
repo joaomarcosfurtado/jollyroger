@@ -6,7 +6,7 @@ snapshot / evaluate endpoints consumed by other SDKs. The general rules live in
 
 ## Rules
 - **MUST** shape every endpoint as: decode into `wire/in` (size-limited, `DisallowUnknownFields`) ->
-  `Validate()` -> `adapter/http` -> controller -> `adapter/http` -> `wire/out` -> JSON. Handlers
+  `Validate()` -> `adapter/api` -> controller -> `adapter/api` -> `wire/out` -> JSON. Handlers
   hold no business rules.
 - **MUST** accept exactly two credentials: the dashboard session cookie (plus CSRF) and an API
   token in `Authorization: Bearer jr_...`. **MUST NOT** accept tokens in query strings (they leak
