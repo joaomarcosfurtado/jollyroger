@@ -1,0 +1,14 @@
+# gitleaks configuration: every default rule stays on.
+[extend]
+useDefault = true
+
+# Genuine false positive (CLAUDE.md rule 9: one narrow, justified suppression).
+# The generic-api-key rule reads the public bucketing test vector
+#   "flag_key": "flag.with-dots_1"
+# as a credential because the line says "key" and the value has enough entropy. It is published
+# test data every SDK must read (protocol/testdata/vectors.json, and the plan that introduced it).
+# The allowlist matches only lines containing that exact test string.
+[allowlist]
+description = "Public bucketing test vector flag.with-dots_1"
+regexTarget = "line"
+regexes = ['''flag\.with-dots_1''']
