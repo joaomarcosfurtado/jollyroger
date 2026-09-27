@@ -1,0 +1,98 @@
+{
+  "vectors_version": 1,
+  "evaluation_cases": [
+    {
+      "name": "enabled flag with empty config serves true",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [{"key": "new-checkout", "enabled": true, "version": 3, "config": {"rules": [], "fallthrough": {}}}]},
+      "flag": "new-checkout",
+      "context": {"user_id": "", "attributes": {}},
+      "expected": {"value": true, "reason": "STATIC", "error_code": "", "flag_version": 3}
+    },
+    {
+      "name": "fixed fallthrough false",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [{"key": "dark-mode", "enabled": true, "version": 2, "config": {"rules": [], "fallthrough": {"value": false}}}]},
+      "flag": "dark-mode",
+      "context": {"user_id": "u1", "attributes": {}},
+      "expected": {"value": false, "reason": "STATIC", "error_code": "", "flag_version": 2}
+    },
+    {
+      "name": "disabled flag serves false",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [{"key": "new-checkout", "enabled": false, "version": 5, "config": {"rules": [], "fallthrough": {"value": true}}}]},
+      "flag": "new-checkout",
+      "context": {"user_id": "u1", "attributes": {"plan": "premium"}},
+      "expected": {"value": false, "reason": "DISABLED", "error_code": "", "flag_version": 5}
+    },
+    {
+      "name": "missing flag",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [{"key": "other", "enabled": true, "version": 1, "config": {"rules": [], "fallthrough": {}}}]},
+      "flag": "new-checkout",
+      "context": {"user_id": "", "attributes": {}},
+      "expected": {"value": false, "reason": "ERROR", "error_code": "FLAG_NOT_FOUND", "flag_version": 0}
+    },
+    {
+      "name": "empty snapshot",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 0, "flags": []},
+      "flag": "new-checkout",
+      "context": {"user_id": "", "attributes": {}},
+      "expected": {"value": false, "reason": "ERROR", "error_code": "FLAG_NOT_FOUND", "flag_version": 0}
+    },
+    {
+      "name": "keys are case-sensitive",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [{"key": "new-checkout", "enabled": true, "version": 1, "config": {"rules": [], "fallthrough": {}}}]},
+      "flag": "New-Checkout",
+      "context": {"user_id": "", "attributes": {}},
+      "expected": {"value": false, "reason": "ERROR", "error_code": "FLAG_NOT_FOUND", "flag_version": 0}
+    },
+    {
+      "name": "static flag ignores context",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [{"key": "new-checkout", "enabled": true, "version": 1, "config": {"rules": [], "fallthrough": {"value": true}}}]},
+      "flag": "new-checkout",
+      "context": {"user_id": "123", "attributes": {"country": "BR", "plan": "premium", "age": 42}},
+      "expected": {"value": true, "reason": "STATIC", "error_code": "", "flag_version": 1}
+    },
+    {
+      "name": "value and split both set is invalid",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [{"key": "broken", "enabled": true, "version": 7, "config": {"rules": [],
+          "fallthrough": {"value": true, "split": {"variations": [{"value": true, "weight": 100000}], "bucket_by": "user_id", "salt": ""}}}}]},
+      "flag": "broken",
+      "context": {"user_id": "u1", "attributes": {}},
+      "expected": {"value": false, "reason": "ERROR", "error_code": "PARSE_ERROR", "flag_version": 7}
+    },
+    {
+      "name": "disabled wins over an invalid config",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [{"key": "broken-off", "enabled": false, "version": 8, "config": {"rules": [],
+          "fallthrough": {"value": true, "split": {"variations": [{"value": true, "weight": 100000}], "bucket_by": "user_id", "salt": ""}}}}]},
+      "flag": "broken-off",
+      "context": {"user_id": "u1", "attributes": {}},
+      "expected": {"value": false, "reason": "DISABLED", "error_code": "", "flag_version": 8}
+    },
+    {
+      "name": "one invalid flag does not affect another",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [
+          {"key": "broken", "enabled": true, "version": 1, "config": {"rules": [],
+            "fallthrough": {"value": true, "split": {"variations": [], "bucket_by": "user_id", "salt": ""}}}},
+          {"key": "healthy", "enabled": true, "version": 2, "config": {"rules": [], "fallthrough": {}}}
+        ]},
+      "flag": "healthy",
+      "context": {"user_id": "", "attributes": {}},
+      "expected": {"value": true, "reason": "STATIC", "error_code": "", "flag_version": 2}
+    }
+  ],
+  "bucket_cases": [
+    {"flag_key": "new-checkout", "salt": "", "value": "user-1", "expected": 83561},
+    {"flag_key": "new-checkout", "salt": "s1", "value": "user-1", "expected": 16082},
+    {"flag_key": "new-checkout", "salt": "", "value": "user-2", "expected": 41251},
+    {"flag_key": "a", "salt": "b", "value": "c", "expected": 65252},
+    {"flag_key": "flag.with-dots_1", "salt": "salt", "value": "ümlaut-user", "expected": 77465},
+    {"flag_key": "x", "salt": "", "value": "", "expected": 30962}
+  ]
+}
