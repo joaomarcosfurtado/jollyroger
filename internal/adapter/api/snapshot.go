@@ -18,7 +18,7 @@ func SnapshotToWire(s model.Snapshot) out.Snapshot {
 			Key:     f.Key,
 			Enabled: f.Enabled,
 			Version: f.Version,
-			Config:  configToWire(f.Config),
+			Config:  ConfigToWire(f.Config),
 		})
 	}
 	return out.Snapshot{
@@ -43,13 +43,14 @@ func SnapshotFromWire(w out.Snapshot) (model.Snapshot, error) {
 			Key:     f.Key,
 			Enabled: f.Enabled,
 			Version: f.Version,
-			Config:  configFromWire(f.Config),
+			Config:  ConfigFromWire(f.Config),
 		})
 	}
 	return model.Snapshot{Environment: w.Environment, Revision: w.Revision, Flags: flags}, nil
 }
 
-func configToWire(c model.FlagConfig) out.FlagConfig {
+// ConfigToWire converts a flag config to its protocol shape (also the JSON stored per flag).
+func ConfigToWire(c model.FlagConfig) out.FlagConfig {
 	if c.Unparseable {
 		return out.FlagConfig{Invalid: true}
 	}
@@ -80,7 +81,9 @@ func serveToWire(s model.Serve) out.Serve {
 	return w
 }
 
-func configFromWire(w out.FlagConfig) model.FlagConfig {
+// ConfigFromWire converts a protocol config to the model; an undecodable config becomes
+// Unparseable.
+func ConfigFromWire(w out.FlagConfig) model.FlagConfig {
 	if w.Invalid {
 		return model.FlagConfig{Unparseable: true}
 	}
