@@ -26,6 +26,7 @@ type SnapshotFlag struct {
 type FlagConfig struct {
 	Rules       []Rule `json:"rules"`
 	Fallthrough Serve  `json:"fallthrough"`
+	Invalid     bool   `json:"-"` // the config could not be decoded; encoded as {"unparseable": true}
 }
 
 // Rule serves Serve when every condition matches.

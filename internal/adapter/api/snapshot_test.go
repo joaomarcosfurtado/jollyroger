@@ -111,7 +111,7 @@ func TestSnapshotFromWire_ToleratesUnknownFields(t *testing.T) {
 	t.Parallel()
 	raw := `{"schema_version":1,"environment":"production","revision":3,"future_top":true,
 		"flags":[{"key":"f","enabled":true,"version":2,"future_flag":"x",
-		"config":{"rules":[],"fallthrough":{"value":false},"future_config":1}}]}`
+		"config":{"rules":[],"fallthrough":{"value":false}}}]}`
 	var w out.Snapshot
 	if err := json.Unmarshal([]byte(raw), &w); err != nil {
 		t.Fatal(err)
@@ -125,6 +125,22 @@ func TestSnapshotFromWire_ToleratesUnknownFields(t *testing.T) {
 	}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %#v, want %#v", got, want)
+	}
+}
+
+func TestSnapshotAdapters_MapUnparseableConfig(t *testing.T) {
+	t.Parallel()
+	w := out.Snapshot{SchemaVersion: out.SnapshotSchemaVersion, Flags: []out.SnapshotFlag{{Key: "f", Enabled: true, Config: out.FlagConfig{Invalid: true}}}}
+	m, err := api.SnapshotFromWire(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (model.FlagConfig{Unparseable: true}); !reflect.DeepEqual(m.Flags[0].Config, want) {
+		t.Fatalf("FromWire config = %#v, want %#v", m.Flags[0].Config, want)
+	}
+	back := api.SnapshotToWire(m)
+	if want := (out.FlagConfig{Invalid: true}); !reflect.DeepEqual(back.Flags[0].Config, want) {
+		t.Fatalf("ToWire config = %#v, want %#v", back.Flags[0].Config, want)
 	}
 }
 

@@ -150,6 +150,7 @@ func TestFlagConfig(t *testing.T) {
 		{"empty config", model.FlagConfig{}, ""},
 		{"fixed fallthrough", model.FlagConfig{Fallthrough: model.Serve{Value: &yes}}, ""},
 		{"rules not supported yet", model.FlagConfig{Rules: []model.Rule{{Serve: model.Serve{Value: &yes}}}}, "rules"},
+		{"unparseable config", model.FlagConfig{Unparseable: true}, "config"},
 		{"split not supported yet", model.FlagConfig{Fallthrough: model.Serve{Split: &model.Split{}}}, "fallthrough"},
 	}
 	for _, tc := range cases {

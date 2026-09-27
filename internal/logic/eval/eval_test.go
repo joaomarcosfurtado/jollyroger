@@ -22,6 +22,8 @@ func TestEvaluate(t *testing.T) {
 			{Key: "rules-unsupported", Enabled: true, Version: 4, Config: model.FlagConfig{Rules: []model.Rule{{Serve: model.Serve{Value: boolPtr(true)}}}}},
 			{Key: "split-unsupported", Enabled: true, Version: 6, Config: model.FlagConfig{Fallthrough: model.Serve{Split: &model.Split{}}}},
 			{Key: "off-with-bad-config", Enabled: false, Version: 8, Config: model.FlagConfig{Fallthrough: model.Serve{Split: &model.Split{}}}},
+			{Key: "unparseable", Enabled: true, Version: 9, Config: model.FlagConfig{Unparseable: true}},
+			{Key: "off-unparseable", Enabled: false, Version: 10, Config: model.FlagConfig{Unparseable: true}},
 			{Key: "dup", Enabled: true, Version: 1},
 			{Key: "dup", Enabled: false, Version: 2},
 		},
@@ -40,6 +42,8 @@ func TestEvaluate(t *testing.T) {
 		{"rules unsupported", "rules-unsupported", model.Result{Value: false, Reason: model.ReasonError, ErrorCode: model.ErrorCodeParseError, FlagVersion: 4}},
 		{"split unsupported", "split-unsupported", model.Result{Value: false, Reason: model.ReasonError, ErrorCode: model.ErrorCodeParseError, FlagVersion: 6}},
 		{"disabled wins over a bad config", "off-with-bad-config", model.Result{Value: false, Reason: model.ReasonDisabled, FlagVersion: 8}},
+		{"unparseable config", "unparseable", model.Result{Value: false, Reason: model.ReasonError, ErrorCode: model.ErrorCodeParseError, FlagVersion: 9}},
+		{"disabled wins over an unparseable config", "off-unparseable", model.Result{Value: false, Reason: model.ReasonDisabled, FlagVersion: 10}},
 		{"duplicate key", "dup", model.Result{Value: false, Reason: model.ReasonError, ErrorCode: model.ErrorCodeParseError}},
 	}
 	for _, tc := range cases {

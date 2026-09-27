@@ -39,8 +39,8 @@ func Compile(s model.Snapshot) *Snapshot {
 func compileFlag(f model.SnapshotFlag) compiledFlag {
 	c := compiledFlag{enabled: f.Enabled, version: f.Version}
 	serve := f.Config.Fallthrough
-	if len(f.Config.Rules) > 0 || serve.Split != nil {
-		// Written by a newer admin plane, or invalid (value and split both set).
+	if f.Config.Unparseable || len(f.Config.Rules) > 0 || serve.Split != nil {
+		// Undecodable, written by a newer admin plane, or invalid (value and split both set).
 		c.errorCode = model.ErrorCodeParseError
 		return c
 	}

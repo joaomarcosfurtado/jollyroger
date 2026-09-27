@@ -6,6 +6,9 @@ package model
 type FlagConfig struct {
 	Rules       []Rule
 	Fallthrough Serve // served when no rule matches; zero value means "serve true"
+	// Unparseable marks a configuration that could not be decoded (for example one written by a
+	// newer version). Such a flag evaluates as PARSE_ERROR and cannot be saved.
+	Unparseable bool
 }
 
 // Rule serves Serve when every condition matches the evaluation context.

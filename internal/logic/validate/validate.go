@@ -127,6 +127,9 @@ func hasVisibleRune(s string) bool {
 // FlagConfig validates a configuration against what this version of the engine supports. v0.1
 // supports no targeting rules and only a fixed fallthrough value.
 func FlagConfig(c model.FlagConfig) error {
+	if c.Unparseable {
+		return invalid("config", "could not be parsed")
+	}
 	if len(c.Rules) > 0 {
 		return invalid("rules", "targeting rules are not supported yet")
 	}

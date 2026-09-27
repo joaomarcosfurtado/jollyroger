@@ -50,6 +50,9 @@ func SnapshotFromWire(w out.Snapshot) (model.Snapshot, error) {
 }
 
 func configToWire(c model.FlagConfig) out.FlagConfig {
+	if c.Unparseable {
+		return out.FlagConfig{Invalid: true}
+	}
 	rules := make([]out.Rule, 0, len(c.Rules))
 	for _, r := range c.Rules {
 		conds := make([]out.Condition, 0, len(r.Conditions))
@@ -78,6 +81,9 @@ func serveToWire(s model.Serve) out.Serve {
 }
 
 func configFromWire(w out.FlagConfig) model.FlagConfig {
+	if w.Invalid {
+		return model.FlagConfig{Unparseable: true}
+	}
 	var rules []model.Rule
 	for _, r := range w.Rules {
 		var conds []model.Condition
