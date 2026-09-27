@@ -40,7 +40,7 @@ internal/
   adapter/api/            TRANSLATION: wire/in -> model command, model -> wire/out
   adapter/db/              TRANSLATION: wire/db row -> model, model -> SQL args
   diplomat/                I/O: postgres, sqlite, memory, migrate, httpserver, ui, poller, cache
-storetest/                 PUBLIC conformance suite every store runs
+internal/storetest/        conformance suite every store runs (public once the store port is)
 jollyrogertest/            PUBLIC test helper for adopters (fixed flags, no DB)
 ```
 

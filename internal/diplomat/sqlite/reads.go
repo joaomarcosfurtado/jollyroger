@@ -65,7 +65,7 @@ func revision(ctx context.Context, q querier, project string) (int64, error) {
 	return rev, nil
 }
 
-func listEnvironments(ctx context.Context, q querier, project string) ([]model.Environment, error) {
+func listEnvironments(ctx context.Context, q querier, project string) (_ []model.Environment, err error) {
 	pid, err := projectID(ctx, q, project)
 	if err != nil {
 		return nil, err
@@ -74,7 +74,7 @@ func listEnvironments(ctx context.Context, q querier, project string) ([]model.E
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: environments: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows, &err)
 	var out []model.Environment
 	for rows.Next() {
 		var r wiredb.EnvironmentRow
@@ -89,7 +89,7 @@ func listEnvironments(ctx context.Context, q querier, project string) ([]model.E
 	return out, nil
 }
 
-func loadSnapshot(ctx context.Context, q querier, project, environment string) (model.Snapshot, error) {
+func loadSnapshot(ctx context.Context, q querier, project, environment string) (_ model.Snapshot, err error) {
 	pid, err := projectID(ctx, q, project)
 	if err != nil {
 		return model.Snapshot{}, err
@@ -109,7 +109,7 @@ func loadSnapshot(ctx context.Context, q querier, project, environment string) (
 	if err != nil {
 		return model.Snapshot{}, fmt.Errorf("sqlite: snapshot: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows, &err)
 	var out []wiredb.SnapshotRow
 	for rows.Next() {
 		var r wiredb.SnapshotRow
@@ -135,7 +135,7 @@ func flagRow(ctx context.Context, q querier, projectID, key string) (wiredb.Flag
 	return f, nil
 }
 
-func getFlag(ctx context.Context, q querier, project, key string) (model.FlagWithStates, error) {
+func getFlag(ctx context.Context, q querier, project, key string) (_ model.FlagWithStates, err error) {
 	pid, err := projectID(ctx, q, project)
 	if err != nil {
 		return model.FlagWithStates{}, err
@@ -150,7 +150,7 @@ func getFlag(ctx context.Context, q querier, project, key string) (model.FlagWit
 	if err != nil {
 		return model.FlagWithStates{}, fmt.Errorf("sqlite: states of %q: %w", key, err)
 	}
-	defer rows.Close()
+	defer closeRows(rows, &err)
 	out := model.FlagWithStates{Flag: adb.RowToFlag(f)}
 	for rows.Next() {
 		var s wiredb.StateRow
@@ -165,7 +165,7 @@ func getFlag(ctx context.Context, q querier, project, key string) (model.FlagWit
 	return out, nil
 }
 
-func listFlags(ctx context.Context, q querier, fq model.FlagQuery) (model.FlagPage, error) {
+func listFlags(ctx context.Context, q querier, fq model.FlagQuery) (_ model.FlagPage, err error) {
 	pid, err := projectID(ctx, q, fq.Project)
 	if err != nil {
 		return model.FlagPage{}, err
@@ -189,7 +189,7 @@ func listFlags(ctx context.Context, q querier, fq model.FlagQuery) (model.FlagPa
 	if err != nil {
 		return model.FlagPage{}, fmt.Errorf("sqlite: list flags: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows, &err)
 	var page model.FlagPage
 	for rows.Next() {
 		var s wiredb.StateRow
@@ -209,7 +209,7 @@ func listFlags(ctx context.Context, q querier, fq model.FlagQuery) (model.FlagPa
 	return page, nil
 }
 
-func listAudit(ctx context.Context, q querier, aq model.AuditQuery) (model.AuditPage, error) {
+func listAudit(ctx context.Context, q querier, aq model.AuditQuery) (_ model.AuditPage, err error) {
 	pid, err := projectID(ctx, q, aq.Project)
 	if err != nil {
 		return model.AuditPage{}, err
@@ -222,7 +222,7 @@ func listAudit(ctx context.Context, q querier, aq model.AuditQuery) (model.Audit
 	if err != nil {
 		return model.AuditPage{}, fmt.Errorf("sqlite: audit: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows, &err)
 	var page model.AuditPage
 	for rows.Next() {
 		var r wiredb.AuditRow
@@ -243,4 +243,11 @@ func listAudit(ctx context.Context, q querier, aq model.AuditQuery) (model.Audit
 		return model.AuditPage{}, fmt.Errorf("sqlite: audit: %w", err)
 	}
 	return page, nil
+}
+
+// closeRows closes rows and reports a close failure unless an earlier error is being returned.
+func closeRows(rows *sql.Rows, err *error) {
+	if cerr := rows.Close(); cerr != nil && *err == nil {
+		*err = cerr
+	}
 }

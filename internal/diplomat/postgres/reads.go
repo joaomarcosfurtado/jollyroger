@@ -65,7 +65,7 @@ func (s *Store) revision(ctx context.Context, q querier, project string) (int64,
 	return rev, nil
 }
 
-func (s *Store) listEnvironments(ctx context.Context, q querier, project string) ([]model.Environment, error) {
+func (s *Store) listEnvironments(ctx context.Context, q querier, project string) (_ []model.Environment, err error) {
 	pid, err := s.projectID(ctx, q, project)
 	if err != nil {
 		return nil, err
@@ -74,7 +74,7 @@ func (s *Store) listEnvironments(ctx context.Context, q querier, project string)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: environments: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows, &err)
 	var out []model.Environment
 	for rows.Next() {
 		var r wiredb.EnvironmentRow
@@ -89,7 +89,7 @@ func (s *Store) listEnvironments(ctx context.Context, q querier, project string)
 	return out, nil
 }
 
-func (s *Store) loadSnapshot(ctx context.Context, q querier, project, environment string) (model.Snapshot, error) {
+func (s *Store) loadSnapshot(ctx context.Context, q querier, project, environment string) (_ model.Snapshot, err error) {
 	pid, err := s.projectID(ctx, q, project)
 	if err != nil {
 		return model.Snapshot{}, err
@@ -109,7 +109,7 @@ func (s *Store) loadSnapshot(ctx context.Context, q querier, project, environmen
 	if err != nil {
 		return model.Snapshot{}, fmt.Errorf("postgres: snapshot: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows, &err)
 	var out []wiredb.SnapshotRow
 	for rows.Next() {
 		var r wiredb.SnapshotRow
@@ -135,7 +135,7 @@ func (s *Store) flagRow(ctx context.Context, q querier, projectID, key string) (
 	return f, nil
 }
 
-func (s *Store) getFlag(ctx context.Context, q querier, project, key string) (model.FlagWithStates, error) {
+func (s *Store) getFlag(ctx context.Context, q querier, project, key string) (_ model.FlagWithStates, err error) {
 	pid, err := s.projectID(ctx, q, project)
 	if err != nil {
 		return model.FlagWithStates{}, err
@@ -150,7 +150,7 @@ func (s *Store) getFlag(ctx context.Context, q querier, project, key string) (mo
 	if err != nil {
 		return model.FlagWithStates{}, fmt.Errorf("postgres: states of %q: %w", key, err)
 	}
-	defer rows.Close()
+	defer closeRows(rows, &err)
 	out := model.FlagWithStates{Flag: adb.RowToFlag(f)}
 	for rows.Next() {
 		var st wiredb.StateRow
@@ -165,7 +165,7 @@ func (s *Store) getFlag(ctx context.Context, q querier, project, key string) (mo
 	return out, nil
 }
 
-func (s *Store) listFlags(ctx context.Context, q querier, fq model.FlagQuery) (model.FlagPage, error) {
+func (s *Store) listFlags(ctx context.Context, q querier, fq model.FlagQuery) (_ model.FlagPage, err error) {
 	pid, err := s.projectID(ctx, q, fq.Project)
 	if err != nil {
 		return model.FlagPage{}, err
@@ -185,7 +185,7 @@ func (s *Store) listFlags(ctx context.Context, q querier, fq model.FlagQuery) (m
 	if err != nil {
 		return model.FlagPage{}, fmt.Errorf("postgres: list flags: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows, &err)
 	var page model.FlagPage
 	for rows.Next() {
 		var st wiredb.StateRow
@@ -205,7 +205,7 @@ func (s *Store) listFlags(ctx context.Context, q querier, fq model.FlagQuery) (m
 	return page, nil
 }
 
-func (s *Store) listAudit(ctx context.Context, q querier, aq model.AuditQuery) (model.AuditPage, error) {
+func (s *Store) listAudit(ctx context.Context, q querier, aq model.AuditQuery) (_ model.AuditPage, err error) {
 	pid, err := s.projectID(ctx, q, aq.Project)
 	if err != nil {
 		return model.AuditPage{}, err
@@ -218,7 +218,7 @@ func (s *Store) listAudit(ctx context.Context, q querier, aq model.AuditQuery) (
 	if err != nil {
 		return model.AuditPage{}, fmt.Errorf("postgres: audit: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows, &err)
 	var page model.AuditPage
 	for rows.Next() {
 		var r wiredb.AuditRow
@@ -239,4 +239,11 @@ func (s *Store) listAudit(ctx context.Context, q querier, aq model.AuditQuery) (
 		return model.AuditPage{}, fmt.Errorf("postgres: audit: %w", err)
 	}
 	return page, nil
+}
+
+// closeRows closes rows and reports a close failure unless an earlier error is being returned.
+func closeRows(rows *sql.Rows, err *error) {
+	if cerr := rows.Close(); cerr != nil && *err == nil {
+		*err = cerr
+	}
 }

@@ -175,12 +175,12 @@ func withTable(d Dialect, stmt string) string {
 	return strings.ReplaceAll(stmt, "{table}", d.Table)
 }
 
-func recorded(ctx context.Context, conn *sql.Conn, d Dialect) (map[int]string, error) {
+func recorded(ctx context.Context, conn *sql.Conn, d Dialect) (_ map[int]string, err error) {
 	rows, err := conn.QueryContext(ctx, withTable(d, selectSQL))
 	if err != nil {
 		return nil, fmt.Errorf("migrate: read applied migrations: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows, &err)
 	done := map[int]string{}
 	for rows.Next() {
 		var v int
@@ -194,4 +194,11 @@ func recorded(ctx context.Context, conn *sql.Conn, d Dialect) (map[int]string, e
 		return nil, fmt.Errorf("migrate: read applied migrations: %w", err)
 	}
 	return done, nil
+}
+
+// closeRows closes rows and reports a close failure unless an earlier error is being returned.
+func closeRows(rows *sql.Rows, err *error) {
+	if cerr := rows.Close(); cerr != nil && *err == nil {
+		*err = cerr
+	}
 }

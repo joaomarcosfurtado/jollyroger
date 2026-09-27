@@ -22,8 +22,8 @@ func TestTime_ScanAcceptsBothDialects(t *testing.T) {
 		if err := got.Scan(src); err != nil {
 			t.Fatalf("Scan(%v): %v", src, err)
 		}
-		if !got.Time.Equal(want) || got.Time.Location() != time.UTC {
-			t.Errorf("Scan(%v) = %v (%v), want %v in UTC", src, got.Time, got.Time.Location(), want)
+		if !got.Equal(want) || got.Location() != time.UTC {
+			t.Errorf("Scan(%v) = %v (%v), want %v in UTC", src, got.Time, got.Location(), want)
 		}
 	}
 }

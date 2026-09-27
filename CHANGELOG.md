@@ -8,6 +8,12 @@ contain breaking changes; they are listed under `### Breaking`.
 ## [Unreleased]
 
 ### Added
+- Storage: PostgreSQL and SQLite stores on the host's own `*sql.DB` (no driver imported), an
+  in-memory store, and one conformance suite all three pass; append-only audit log enforced by
+  database triggers.
+- Migrations: embedded, checksummed, applied in one locked transaction so many instances can boot
+  at once; tolerant of newer schemas during rolling deploys.
+- `protocol/storage-contract.md`: what an SDK may read from the database.
 - Evaluation engine: compiled, immutable snapshots evaluated with zero allocations; deterministic
   SHA-256 bucketing.
 - Protocol: `protocol/evaluation-spec.md` and `protocol/testdata/vectors.json`, the cases every

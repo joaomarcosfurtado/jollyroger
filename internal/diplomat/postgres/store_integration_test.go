@@ -21,7 +21,9 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-const defaultURL = "postgres://jollyroger:jollyroger@localhost:55432/jollyroger_test?sslmode=disable"
+// defaultURL is the throwaway local database from docker-compose.yml. Its password is public test
+// setup, not a secret, which makes gosec's G101 a false positive here.
+const defaultURL = "postgres://jollyroger:jollyroger@localhost:55432/jollyroger_test?sslmode=disable" //nolint:gosec // G101: public local test credentials, see above
 
 func testURL() string {
 	if v := os.Getenv("JOLLYROGER_TEST_POSTGRES_URL"); v != "" {
@@ -195,5 +197,111 @@ func TestLoadSnapshot_IsolatesAConfigFromANewerVersion(t *testing.T) {
 	snap, err := s.LoadSnapshot(t.Context(), model.DefaultProject, "production")
 	if err != nil || len(snap.Flags) != 2 || !snap.Flags[0].Config.Unparseable || snap.Flags[1].Config.Unparseable {
 		t.Fatalf("snapshot = %+v, %v; want newer Unparseable and plain intact", snap, err)
+	}
+}
+
+// contractQueries returns the SQL statements published in protocol/storage-contract.md, so the
+// document SDK authors copy is tested against a real database.
+func contractQueries(t *testing.T) []string {
+	t.Helper()
+	raw, err := os.ReadFile("../../../protocol/storage-contract.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rest, ok := strings.Cut(string(raw), "```sql\n")
+	block, _, ok2 := strings.Cut(rest, "```")
+	if !ok || !ok2 {
+		t.Fatal("storage-contract.md has no sql block")
+	}
+	var stmts []string
+	for _, s := range strings.Split(block, ";") {
+		if s = strings.TrimSpace(s); s != "" {
+			stmts = append(stmts, s)
+		}
+	}
+	if len(stmts) != 2 {
+		t.Fatalf("want the revision query and the snapshot query, got %d statements", len(stmts))
+	}
+	return stmts
+}
+
+func TestStorageContractQueryMatchesLoadSnapshot(t *testing.T) {
+	t.Parallel()
+	db := openDB(t)
+	schema := freshSchema(t, db)
+	s := migrated(t, db, schema)
+	err := s.InTx(t.Context(), func(tx model.FlagTx) error {
+		for _, key := range []string{"b", "a", "gone"} {
+			if _, err := tx.CreateFlag(t.Context(), model.NewFlag{ID: "id-" + key, Project: model.DefaultProject, Key: key, Name: key, Kind: model.KindBoolean, At: time.Now(), Actor: "t"}); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.SetEnvState(t.Context(), model.DefaultProject, "a", "production", model.EnvStateChange{Enabled: true, At: time.Now()}, 1); err != nil {
+			return err
+		}
+		if _, err := tx.ArchiveFlag(t.Context(), model.DefaultProject, "gone", time.Now()); err != nil {
+			return err
+		}
+		_, err := tx.BumpRevision(t.Context(), model.DefaultProject)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The contract's SQL is unqualified: an SDK reads the host's configured schema via search_path.
+	conn, err := db.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := conn.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	if _, err := conn.ExecContext(t.Context(), strings.ReplaceAll(`SET search_path TO "{s}"`, "{s}", schema)); err != nil {
+		t.Fatal(err)
+	}
+	stmts := contractQueries(t)
+	var rev int64
+	if err := conn.QueryRowContext(t.Context(), strings.ReplaceAll(stmts[0], ":project", "$1"), model.DefaultProject).Scan(&rev); err != nil {
+		t.Fatalf("contract revision query: %v", err)
+	}
+	snapSQL := strings.NewReplacer(":project", "$1", ":environment", "$2").Replace(stmts[1])
+	rows, err := conn.QueryContext(t.Context(), snapSQL, model.DefaultProject, "production")
+	if err != nil {
+		t.Fatalf("contract snapshot query: %v", err)
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	type flag struct {
+		key     string
+		enabled bool
+		version int64
+	}
+	var got []flag
+	for rows.Next() {
+		var f flag
+		var config string
+		if err := rows.Scan(&f.key, &f.enabled, &f.version, &config); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, f)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := s.LoadSnapshot(t.Context(), model.DefaultProject, "production")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want []flag
+	for _, f := range snap.Flags {
+		want = append(want, flag{f.Key, f.Enabled, f.Version})
+	}
+	if rev != snap.Revision || !reflect.DeepEqual(got, want) {
+		t.Fatalf("contract query = rev %d %v; LoadSnapshot = rev %d %v", rev, got, snap.Revision, want)
 	}
 }

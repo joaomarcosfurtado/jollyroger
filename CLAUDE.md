@@ -123,9 +123,10 @@ storage read contract) live in `protocol/`.
     generous than the real database proves nothing.
 13. **One concern per package and per file.** Split when a second concern lands, never by line count.
     One controller use case per file, one store entity per file.
-14. **The public API is small and deliberate.** Only the root package, `storetest` and
-    `jollyrogertest` are importable by adopters; everything else is `internal/`. Changing an exported
-    identifier is a semver event and needs a CHANGELOG entry.
+14. **The public API is small and deliberate.** Only the root package and `jollyrogertest` are
+    importable by adopters (`internal/storetest` becomes public with the store port); everything
+    else is `internal/`. Changing an exported identifier is a semver event and needs a CHANGELOG
+    entry.
 15. **Never use the em-dash character in any text you write** (docs, comments, commits, PRs, UI copy).
     Use a comma, colon, parentheses, or a period.
 16. **No shortcuts.** Do not downscope the correct solution because it looks like a lot of work. The

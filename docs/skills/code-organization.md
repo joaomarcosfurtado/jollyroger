@@ -10,7 +10,8 @@
   store entity per file (`internal/diplomat/postgres/flags.go`, `.../audit.go`).
 - **MUST** ship `x_test.go` next to every `x.go` that has behaviour, except the named exemptions
   below. Coverage for an exempt file must live in a specific, named place.
-- **MUST** keep the public API to the root package, `storetest` and `jollyrogertest`. Everything
+- **MUST** keep the public API to the root package and `jollyrogertest` (the conformance suite is
+  `internal/storetest` until the store port is public). Everything
   else lives under `internal/`. Re-export what adopters need from the root as type aliases
   (`type Context = model.Context`).
 - **MUST** put optional integrations that bring dependencies in their own Go module under
@@ -29,9 +30,9 @@
 
 | Exempt | Where its coverage lives |
 |---|---|
-| `internal/model` interface declarations | every implementation + the `storetest` suite |
+| `internal/model` interface declarations | every implementation + the `internal/storetest` suite |
 | `internal/wire/out/**`, `internal/wire/db/**` | the adapter test for that entity asserts the shape |
-| `internal/diplomat/{postgres,sqlite}/**` store methods | `storetest` run from `integration`-tagged tests against real databases |
+| `internal/diplomat/{postgres,sqlite}/**` store methods | `internal/storetest` run against real databases (SQLite files in the default suite, PostgreSQL under the `integration` tag) |
 | `doc.go` files | nothing to test |
 
 `internal/wire/in/**` is NOT exempt: it is the untrusted-input gate, the `Validate()` method IS the
