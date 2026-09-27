@@ -22,11 +22,12 @@ other languages. That makes migrations far more dangerous than in an ordinary ap
   SDKs in other languages read these tables (`protocol/storage-contract.md`).
 - **MUST NOT** edit a migration after it has been released. The runner stores a checksum and refuses
   to start on drift. Fix forward with a new migration.
-- **MUST** run migrations under a lock so N instances booting at once migrate exactly once:
-  `pg_advisory_lock` on PostgreSQL, `BEGIN IMMEDIATE` on SQLite.
-- **MUST** keep each migration in one transaction where the dialect allows it (PostgreSQL DDL is
-  transactional). A statement that cannot run in a transaction (`CREATE INDEX CONCURRENTLY`) gets
-  its own migration file with a `-- jollyroger:no-transaction` header.
+- **MUST** run migrations under a lock so N instances booting at once migrate exactly once. A run
+  is ONE transaction under the lock (`pg_advisory_xact_lock` on PostgreSQL, `BEGIN IMMEDIATE` on
+  SQLite): all pending migrations apply, or none do.
+- **MUST NOT** write a migration that cannot run inside a transaction (`CREATE INDEX CONCURRENTLY`)
+  until the runner supports a `-- jollyroger:no-transaction` directive; add that support, with
+  tests, in the same change as the first migration that needs it.
 - **MUST** ship an integration test for every migration: apply on an empty DB, apply again
   (idempotent), and apply concurrently from two goroutines (the lock holds).
 - **MUST** update `protocol/storage-contract.md` when a migration adds anything SDKs may read, and
@@ -36,19 +37,24 @@ other languages. That makes migrations far more dangerous than in an ordinary ap
 - Tracks applied migrations in `jollyroger_schema_migrations(version, name, checksum, applied_at)`.
 - Checksums are computed over the file content with line endings normalized to `\n`, so a Windows
   checkout with CRLF does not look like drift.
-- Applies pending migrations in numeric order; on any error the transaction rolls back and `New`
-  returns the error (fail closed, the host sees it at startup).
-- Records the schema MAJOR version; SDKs refuse to start on an incompatible major and say why.
+- Applies pending migrations in numeric order in one transaction; on any error everything rolls
+  back and `New` returns the error (fail closed, the host sees it at startup).
+- Ignores recorded versions it does not know (a newer build migrated first during a rolling
+  deploy): migrations are additive, so older code keeps working.
+- Migration 0001 records the schema MAJOR version in `jollyroger_schema_info`; SDKs refuse to start
+  on an incompatible major and say why (`protocol/storage-contract.md`).
 - Auto-migrate runs on `jollyroger.New` by default. `WithoutAutoMigrate()` disables it; then `New`
   verifies the schema is current and returns an error naming `jollyroger migrate` if it is not.
 - `jollyroger migrate --print-sql --dialect postgres` prints the SQL for teams using their own
   migration tooling (goose, atlas, flyway).
 
 ## SQLite notes
-- SQLite has no `ADD COLUMN IF NOT EXISTS`. The runner supports a `-- jollyroger:add-column table column`
-  directive that checks `pragma_table_info` before running the `ALTER TABLE`.
-- Recommend (document, do not force) WAL mode and `busy_timeout` on the host's connection; writes
-  are rare, reads come from the in-memory snapshot.
+- SQLite has no `ADD COLUMN IF NOT EXISTS`. The first SQLite migration that adds a column must also
+  add a runner directive (for example `-- jollyroger:add-column table column`, checking
+  `pragma_table_info` first), with tests, in the same change.
+- Recommend (document, do not force) WAL mode and a `busy_timeout` on the host's connection. The
+  store raises a `busy_timeout` of 0 to 5 seconds on the connections it uses, so concurrent writers
+  wait instead of failing with `SQLITE_BUSY`.
 
 ## Why these rules exist
 - An idempotent-only rule was learned the hard way in the source project: its runner re-ran every

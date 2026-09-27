@@ -35,3 +35,8 @@ formatters:
   enable:
     - gofmt
     - goimports
+
+issues:
+  # Show every finding: the defaults hide repeats, which is how a pattern bug survives review.
+  max-issues-per-linter: 0
+  max-same-issues: 0

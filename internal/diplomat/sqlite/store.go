@@ -1,0 +1,160 @@
+// Package sqlite is the SQLite implementation of model.FlagStore. The host passes its own *sql.DB
+// opened with any database/sql SQLite driver; jollyroger imports no driver. Requires SQLite 3.35+.
+//
+// Write transactions start with BEGIN IMMEDIATE so a writer takes the lock before reading (a
+// deferred transaction that reads and then writes fails at once under contention). Every read and
+// write runs on a connection with a busy timeout: if the host left it at SQLite's default of 0, the
+// store raises it to 5 seconds on the connections it uses (the setting stays on those pooled
+// connections), so jollyroger waits for writers instead of failing with SQLITE_BUSY.
+package sqlite
+
+import (
+	"context"
+	"database/sql"
+	"embed"
+	"errors"
+	"fmt"
+	"io/fs"
+
+	"github.com/joaomarcosfurtado/jollyroger/internal/diplomat/migrate"
+	"github.com/joaomarcosfurtado/jollyroger/internal/model"
+)
+
+//go:embed migrations/*.sql
+var migrationFiles embed.FS
+
+// setBusyTimeoutSQL is applied only when the host has not set a busy timeout.
+const setBusyTimeoutSQL = "PRAGMA busy_timeout = 5000"
+
+// Store is a model.FlagStore on a host-provided SQLite database.
+type Store struct{ db *sql.DB }
+
+// New returns a Store on db. Run Migrate before using it.
+func New(db *sql.DB) *Store { return &Store{db: db} }
+
+// querier is what reads and writes need; *sql.DB and *sql.Conn satisfy it.
+type querier interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// Migrate applies pending migrations and returns the versions applied.
+func (s *Store) Migrate(ctx context.Context) ([]int, error) {
+	sub, err := fs.Sub(migrationFiles, "migrations")
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: migrations: %w", err)
+	}
+	ms, err := migrate.Load(sub)
+	if err != nil {
+		return nil, err
+	}
+	return migrate.Run(ctx, s.db, migrate.Dialect{
+		Begin:       "BEGIN IMMEDIATE",
+		Table:       "jollyroger_schema_migrations",
+		Placeholder: func(int) string { return "?" },
+		Render:      func(sql string) string { return sql },
+		Prepare:     ensureBusyTimeout,
+	}, ms)
+}
+
+// ensureBusyTimeout sets a busy timeout on conn only if the host left it at 0.
+func ensureBusyTimeout(ctx context.Context, conn *sql.Conn) error {
+	var ms int
+	if err := conn.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&ms); err != nil {
+		return fmt.Errorf("sqlite: read busy_timeout: %w", err)
+	}
+	if ms > 0 {
+		return nil
+	}
+	if _, err := conn.ExecContext(ctx, setBusyTimeoutSQL); err != nil {
+		return fmt.Errorf("sqlite: set busy_timeout: %w", err)
+	}
+	return nil
+}
+
+// withConn runs fn inside a transaction opened with begin ("BEGIN" for reads, "BEGIN IMMEDIATE"
+// for writes) on one dedicated connection, committing if fn returns nil.
+func (s *Store) withConn(ctx context.Context, begin string, fn func(q querier) error) (err error) {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("sqlite: connect: %w", err)
+	}
+	defer func() {
+		if cerr := conn.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("sqlite: release connection: %w", cerr)
+		}
+	}()
+	if err := ensureBusyTimeout(ctx, conn); err != nil {
+		return err
+	}
+	if _, err := conn.ExecContext(ctx, begin); err != nil {
+		return fmt.Errorf("sqlite: begin: %w", err)
+	}
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		if _, rbErr := conn.ExecContext(context.WithoutCancel(ctx), "ROLLBACK"); rbErr != nil && err != nil {
+			err = errors.Join(err, fmt.Errorf("sqlite: rollback: %w", rbErr))
+		}
+	}()
+	if err := fn(conn); err != nil {
+		return err
+	}
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return fmt.Errorf("sqlite: commit: %w", err)
+	}
+	committed = true
+	return nil
+}
+
+// InTx implements model.FlagStore.
+func (s *Store) InTx(ctx context.Context, fn func(model.FlagTx) error) error {
+	return s.withConn(ctx, "BEGIN IMMEDIATE", func(q querier) error { return fn(&tx{q: q}) })
+}
+
+// LoadSnapshot implements model.FlagStore. The revision and the flags come from one read
+// transaction, so they are consistent.
+func (s *Store) LoadSnapshot(ctx context.Context, project, environment string) (model.Snapshot, error) {
+	return read(ctx, s, func(q querier) (model.Snapshot, error) { return loadSnapshot(ctx, q, project, environment) })
+}
+
+// read runs fn in a read transaction on a connection that waits for writers (see withConn), so a
+// read never fails with SQLITE_BUSY while jollyroger or the host commits, and its queries see
+// one consistent state.
+func read[T any](ctx context.Context, s *Store, fn func(q querier) (T, error)) (T, error) {
+	var out T
+	err := s.withConn(ctx, "BEGIN", func(q querier) error {
+		var err error
+		out, err = fn(q)
+		return err
+	})
+	return out, err
+}
+
+// Revision implements model.FlagStore.
+func (s *Store) Revision(ctx context.Context, project string) (int64, error) {
+	return read(ctx, s, func(q querier) (int64, error) { return revision(ctx, q, project) })
+}
+
+// ListEnvironments implements model.FlagStore.
+func (s *Store) ListEnvironments(ctx context.Context, project string) ([]model.Environment, error) {
+	return read(ctx, s, func(q querier) ([]model.Environment, error) { return listEnvironments(ctx, q, project) })
+}
+
+// GetFlag implements model.FlagStore.
+func (s *Store) GetFlag(ctx context.Context, project, key string) (model.FlagWithStates, error) {
+	return read(ctx, s, func(q querier) (model.FlagWithStates, error) { return getFlag(ctx, q, project, key) })
+}
+
+// ListFlags implements model.FlagStore.
+func (s *Store) ListFlags(ctx context.Context, fq model.FlagQuery) (model.FlagPage, error) {
+	return read(ctx, s, func(q querier) (model.FlagPage, error) { return listFlags(ctx, q, fq) })
+}
+
+// ListAudit implements model.FlagStore.
+func (s *Store) ListAudit(ctx context.Context, aq model.AuditQuery) (model.AuditPage, error) {
+	return read(ctx, s, func(q querier) (model.AuditPage, error) { return listAudit(ctx, q, aq) })
+}

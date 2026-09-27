@@ -74,7 +74,7 @@ The code follows Diplomat (ports and adapters) as documented in
 | diplomat | `internal/diplomat/{postgres,sqlite,memory,migrate,cache,ui}` | I/O |
 | diplomat entry points | `internal/diplomat/{httpserver,poller}` | drive controllers |
 | composition roots | root `jollyroger`, `cmd/jollyroger`, `jollyrogertest` | wiring, public API |
-| public test kit | `storetest` | store conformance suite |
+| test kit | `internal/storetest` | store conformance suite (public once the store port is) |
 
 Optional integrations live in separate Go modules (`contrib/prometheus`, `contrib/otel`); examples
 live in the separate `examples/` module. The core module depends on the standard library and
@@ -228,6 +228,12 @@ All objects are prefixed `jollyroger_`. With `WithSchema("x")` on PostgreSQL the
   `AUDIT_PRUNED` entry recording the date and the count.
 - Timestamps are UTC (`TIMESTAMPTZ` on PostgreSQL, RFC 3339 text with `Z` on SQLite).
 - Migration rules (idempotent, additive, checksummed, locked) are in `docs/skills/migrations.md`.
+
+Refinements made while planning M2: the conformance suite is `internal/storetest` until the store
+port becomes public (a public suite over internal types could not be used by anyone); a single-row
+`jollyroger_schema_info` table records the schema major for SDKs; the audit JSON columns are named
+`before_state` and `after_state`; the audit log is ordered by its time-ordered ID; the revision is
+seeded at 0; keys and IDs use byte order (`COLLATE "C"` on PostgreSQL).
 
 ## 6. Domain and evaluation model
 

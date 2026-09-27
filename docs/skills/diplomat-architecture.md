@@ -40,7 +40,7 @@ internal/
   adapter/api/            TRANSLATION: wire/in -> model command, model -> wire/out
   adapter/db/              TRANSLATION: wire/db row -> model, model -> SQL args
   diplomat/                I/O: postgres, sqlite, memory, migrate, httpserver, ui, poller, cache
-storetest/                 PUBLIC conformance suite every store runs
+internal/storetest/        conformance suite every store runs (public once the store port is)
 jollyrogertest/            PUBLIC test helper for adopters (fixed flags, no DB)
 ```
 
@@ -71,9 +71,9 @@ Three invariants that must never break:
 | `wire/*` | nothing | everything internal |
 | `logic/*` | `logic`, `model` | `controller`, `wire`, `adapter`, `diplomat` |
 | `controller` | `model`, `logic` | `wire`, `adapter`, `diplomat` |
-| `adapter/*` | `model`, `wire`, `logic` [2] | `controller`, `diplomat` |
+| `adapter/*` | `adapter` [5], `model`, `wire`, `logic` [2] | `controller`, `diplomat` |
 | `diplomat/*` | `diplomat`, `adapter`, `wire`, `model`, `logic` [3] | `controller` (except entry points [4]) |
-| `storetest` | `model`, `logic` | everything else internal |
+| `internal/storetest` | `model`, `logic` | everything else internal |
 | root, `cmd/`, `jollyrogertest` | anything | (composition roots) |
 
 Pure layers (`model`, `wire`, `logic`, `adapter`) also must not import I/O packages from the
@@ -90,6 +90,8 @@ standard library: `database/sql`, `net`, `net/http`, `os`, `os/exec`, `syscall`,
   decode). The decision stays in `logic`/`controller`.
 - **[4]** Entry points drive controllers: `diplomat/httpserver` (HTTP) and `diplomat/poller`
   (timer). Stores, migrate, ui and cache must not import `controller`.
+- **[5]** `adapter/*` may import another `adapter/*` package: composing pure translations stays
+  pure (for example `adapter/db` stores the protocol config JSON through `adapter/api`).
 
 ## Go idiom mapping (from the Clojure original)
 

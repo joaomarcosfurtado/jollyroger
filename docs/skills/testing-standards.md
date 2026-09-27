@@ -61,7 +61,8 @@ archived state and audit immutability exactly like the SQL stores, and `storetes
 | `internal/adapter/*` | exact-equality mapping tests; wire/out shape assertions | no |
 | `internal/controller` | fakes on the ports; every error branch | no |
 | `internal/diplomat/memory` | `storetest.Run` | no |
-| `internal/diplomat/{postgres,sqlite}` | `storetest.Run` + dialect specifics, tag `integration` | yes |
+| `internal/diplomat/sqlite` | `storetest.Run` + dialect specifics on real SQLite files (pure Go driver, runs in the default suite) | yes, a temp file |
+| `internal/diplomat/postgres` | `storetest.Run` + dialect specifics, tag `integration`, one fresh schema per test | yes |
 | `internal/diplomat/migrate` | apply twice (idempotent), concurrent apply (lock), checksum drift | yes |
 | `internal/diplomat/httpserver` | `httptest` through the real router; OpenAPI response validation | memory store |
 | root package | end to end: `New` + `Handler` + `Enabled` with memory, then with real DBs | both |
