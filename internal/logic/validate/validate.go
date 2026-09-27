@@ -46,12 +46,16 @@ func EnvironmentKey(key string) error {
 	return nil
 }
 
-// FlagName validates a display name: required, single line, at most MaxNameLength characters.
+// FlagName validates a display name: required (at least one visible character), single line, at
+// most MaxNameLength characters.
 func FlagName(name string) error {
-	if strings.TrimSpace(name) == "" {
+	if err := text("name", name, MaxNameLength, false); err != nil {
+		return err
+	}
+	if !hasVisibleRune(name) {
 		return invalid("name", "is required")
 	}
-	return text("name", name, MaxNameLength, false)
+	return nil
 }
 
 // Description validates an optional, possibly multi-line description.
@@ -64,8 +68,11 @@ func ChangeReason(r string) error {
 	return text("reason", r, MaxReasonLength, true)
 }
 
-// text checks encoding, length, and control characters. Control characters are rejected because
-// they enable terminal-escape and log-injection tricks when an audit log is printed.
+// text checks encoding, length, and characters that change how text is displayed. Control
+// characters, bidirectional formatting characters, and line/paragraph separators are rejected
+// because they enable terminal-escape, log-injection, and spoofing tricks when an audit log or
+// the dashboard shows the text. Multi-line fields accept '\n', '\t', and '\r' only as part of a
+// "\r\n" pair (a lone '\r' rewrites the printed line).
 func text(field, s string, maxLen int, multiline bool) error {
 	if !utf8.ValidString(s) {
 		return invalid(field, "must be valid UTF-8")
@@ -73,16 +80,48 @@ func text(field, s string, maxLen int, multiline bool) error {
 	if utf8.RuneCountInString(s) > maxLen {
 		return invalid(field, "is too long")
 	}
-	for _, r := range s {
-		if !unicode.IsControl(r) {
-			continue
+	for i, r := range s {
+		switch {
+		case r == '\n' || r == '\t':
+			if !multiline {
+				return invalid(field, "must be a single line")
+			}
+		case r == '\r':
+			if !multiline || !strings.HasPrefix(s[i+1:], "\n") {
+				return invalid(field, "must not contain a carriage return outside a line break")
+			}
+		case unicode.IsControl(r) || isBidiControl(r) || unicode.In(r, unicode.Zl, unicode.Zp):
+			return invalid(field, "must not contain control or text-direction characters")
 		}
-		if multiline && (r == '\n' || r == '\r' || r == '\t') {
-			continue
-		}
-		return invalid(field, "must not contain control characters")
 	}
 	return nil
+}
+
+// isBidiControl reports whether r is a Unicode bidirectional formatting character (the embedding,
+// override, isolate, and mark characters), which can make displayed text differ from stored text.
+func isBidiControl(r rune) bool {
+	switch {
+	case r >= 0x202A && r <= 0x202E, // LRE, RLE, PDF, LRO, RLO
+		r >= 0x2066 && r <= 0x2069, // LRI, RLI, FSI, PDI
+		r == 0x200E, r == 0x200F, r == 0x061C: // LRM, RLM, ALM
+		return true
+	default:
+		return false
+	}
+}
+
+// hasVisibleRune reports whether s contains at least one character that renders as something:
+// not whitespace, not an invisible format character (such as U+200B), and not a Hangul filler.
+func hasVisibleRune(s string) bool {
+	for _, r := range s {
+		switch {
+		case unicode.IsSpace(r), unicode.Is(unicode.Cf, r):
+		case r == 0x115F, r == 0x1160, r == 0x3164, r == 0xFFA0: // Hangul fillers render blank
+		default:
+			return true
+		}
+	}
+	return false
 }
 
 // FlagConfig validates a configuration against what this version of the engine supports. v0.1

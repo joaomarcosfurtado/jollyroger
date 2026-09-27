@@ -89,6 +89,13 @@ func TestFlagName(t *testing.T) {
 		{"escape sequence", "New \x1b[31mCheckout", "name"},
 		{"nul byte", "New\x00Checkout", "name"},
 		{"invalid utf8", "New \xff Checkout", "name"},
+		{"right-to-left override spoofing", "Enable‮kcehc", "name"},
+		{"bidi isolate", "New ⁦Checkout⁩", "name"},
+		{"left-to-right mark", "New‎Checkout", "name"},
+		{"line separator", "New Checkout", "name"},
+		{"only zero-width spaces", "​​", "name"},
+		{"only hangul filler", "ㅤ", "name"},
+		{"emoji with zero-width joiner is fine", "Team \U0001F468‍\U0001F469", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -111,6 +118,10 @@ func TestDescription(t *testing.T) {
 		{"too long", strings.Repeat("d", validate.MaxDescriptionLength+1), "description"},
 		{"escape sequence", "x\x1b[2J", "description"},
 		{"invalid utf8", "\xc3\x28", "description"},
+		{"lone carriage return overwrites a printed line", "Rollback\rApproved by admin", "description"},
+		{"trailing carriage return", "Rollback\r", "description"},
+		{"right-to-left override", "ok ‮", "description"},
+		{"paragraph separator", "a b", "description"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
