@@ -63,17 +63,19 @@ func (c FlagConfig) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON decodes a config strictly. It never returns an error: a config that is not an
 // object, has a wrongly typed field, or has any unknown field decodes as FlagConfig{Invalid: true}.
 func (c *FlagConfig) UnmarshalJSON(data []byte) error {
-	var v FlagConfig
-	err := decodeObject(data, true, map[string]any{
-		"rules":       &v.Rules,
-		"fallthrough": &v.Fallthrough,
-	})
-	if err != nil {
-		*c = FlagConfig{Invalid: true}
-		return nil
-	}
-	*c = v
+	*c = decodeConfig(data)
 	return nil
+}
+
+// decodeConfig converts a config that cannot be decoded into FlagConfig{Invalid: true}. This is
+// the protocol's per-flag isolation (evaluation-spec.md section 2, rule 4), not a hidden error:
+// the invalid state reaches the engine and evaluates as PARSE_ERROR.
+func decodeConfig(data []byte) FlagConfig {
+	var v FlagConfig
+	if decodeObject(data, true, map[string]any{"rules": &v.Rules, "fallthrough": &v.Fallthrough}) != nil {
+		return FlagConfig{Invalid: true}
+	}
+	return v
 }
 
 // UnmarshalJSON decodes a rule strictly.

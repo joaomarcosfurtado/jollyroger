@@ -102,7 +102,7 @@ func text(field, s string, maxLen int, multiline bool) error {
 func isBidiControl(r rune) bool {
 	switch {
 	case r >= 0x202A && r <= 0x202E, // LRE, RLE, PDF, LRO, RLO
-		r >= 0x2066 && r <= 0x2069, // LRI, RLI, FSI, PDI
+		r >= 0x2066 && r <= 0x2069,            // LRI, RLI, FSI, PDI
 		r == 0x200E, r == 0x200F, r == 0x061C: // LRM, RLM, ALM
 		return true
 	default:

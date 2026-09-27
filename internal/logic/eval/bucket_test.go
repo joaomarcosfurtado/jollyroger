@@ -17,7 +17,7 @@ func TestBucket_MatchesIndependentlyComputedValues(t *testing.T) {
 		{"new-checkout", "s1", "user-1", 16082},
 		{"new-checkout", "", "user-2", 41251},
 		{"a", "b", "c", 65252},
-		{"flag.with-dots_1", "salt", "ümlaut-user", 77465},
+		{"flag.with-dots_1", "salt", "\u00fcmlaut-user", 77465},
 		{"x", "", "", 30962},
 	}
 	for _, tc := range cases {

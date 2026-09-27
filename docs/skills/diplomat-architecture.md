@@ -33,7 +33,9 @@ internal/
   logic/                   DOMAIN: pure functions (eval, snapshot, validate, pagination)
   controller/              DOMAIN: one file per use case (create_flag.go, set_flag_state.go, ...)
   wire/in/                 BOUNDARY: untrusted request shapes + Validate()
-  wire/out/                BOUNDARY: response + view shapes (asserted in adapter tests)
+  wire/out/                BOUNDARY: response + view shapes (asserted in adapter tests); protocol
+                           documents such as the snapshot are also read, with their decoding rules
+                           in wire/out/decode.go
   wire/db/                 BOUNDARY: row scan targets per table
   adapter/api/            TRANSLATION: wire/in -> model command, model -> wire/out
   adapter/db/              TRANSLATION: wire/db row -> model, model -> SQL args

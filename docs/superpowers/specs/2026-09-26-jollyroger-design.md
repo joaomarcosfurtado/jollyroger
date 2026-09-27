@@ -236,30 +236,35 @@ All objects are prefixed `jollyroger_`. With `WithSchema("x")` on PostgreSQL the
 - `EnvState` (per flag and environment): `Enabled`, `Config`, `Version` (starts at 1, +1 per change),
   `UpdatedAt`, `UpdatedBy`.
 - `Config` is built for growth: `{ "rules": [ {"conditions": [...], "serve": Serve} ],
-  "fallthrough": Serve }`, where `Serve` is `{"value": bool}` or `{"split": [{"value": bool,
-  "weight": int}], "bucket_by": "user_id"|"attr:<name>", "salt": string}`. v0.1 accepts only the
-  empty config (no rules, fallthrough `true`); other shapes are rejected by validation until their
-  milestone.
+  "fallthrough": Serve }`, where `Serve` is `{"value": bool}` or `{"split": {"variations":
+  [{"value": bool, "weight": int}], "bucket_by": "user_id"|"attr:<name>", "salt": string}}`. v0.1
+  accepts no rules and a fallthrough that is either empty (serve `true`) or a fixed value; rules
+  and splits are rejected by validation until their milestone.
 - `Context`: `UserID string`, `Attributes map[string]any`.
 - `Result`: `Value bool`, `Reason` (`DISABLED`, `STATIC`, `TARGETING_MATCH`, `SPLIT`, `DEFAULT`,
   `ERROR`, aligned with OpenFeature), `FlagVersion int64`, `ErrorCode` (`FLAG_NOT_FOUND`,
-  `PARSE_ERROR`, `GENERAL`).
+  `PARSE_ERROR`, `GENERAL`, `PROVIDER_NOT_READY`).
 
-Evaluation algorithm (identical in every SDK):
-1. Flag missing or archived in the snapshot: `false`, `ERROR`, `FLAG_NOT_FOUND`.
-2. `enabled == false`: `false`, `DISABLED`.
-3. Rules in order; the first whose conditions all match serves its `Serve` (`TARGETING_MATCH`, or
+Evaluation algorithm (identical in every SDK; the normative text, including snapshot decoding
+rules, is `protocol/evaluation-spec.md`):
+1. No snapshot loaded yet: `false`, `ERROR`, `PROVIDER_NOT_READY`.
+2. Flag missing or archived in the snapshot: `false`, `ERROR`, `FLAG_NOT_FOUND`.
+3. `enabled == false`: `false`, `DISABLED`.
+4. A configuration the SDK cannot decode or does not implement: `false`, `ERROR`, `PARSE_ERROR`,
+   without affecting other flags.
+5. Rules in order; the first whose conditions all match serves its `Serve` (`TARGETING_MATCH`, or
    `SPLIT` for a split).
-4. Otherwise serve `fallthrough` (`STATIC` for a fixed value, `SPLIT` for a split).
-5. A split with no bucketing value available (e.g. empty `UserID`) serves the first variation with
-   reason `DEFAULT`. Never random.
+6. Otherwise serve `fallthrough` (`STATIC` for a fixed value, `SPLIT` for a split).
+7. A split with no bucketing value available (empty `UserID`, or a missing or non-string
+   attribute) serves the first variation with reason `DEFAULT`. Never random.
 
 Deterministic bucketing (specified now, used from the rollout milestone):
 `bucket = uint32 big-endian of the first 4 bytes of SHA-256(flagKey + "." + salt + "." + value) mod
 100000`, giving 0.001% granularity. SHA-256 is in every language's standard library.
 
-`protocol/testdata/vectors.json` holds cases `{name, snapshot, flag, context, expected: {value,
-reason, error_code}}`. The Go engine runs every case in its tests; every SDK must too.
+`protocol/testdata/vectors.json` holds evaluation cases `{name, snapshot, flag, context, expected:
+{value, reason, error_code, flag_version}}`, bucketing cases, and document cases (`accept` or
+`reject`). The Go engine runs every case in its tests; every SDK must too.
 
 Snapshot: an immutable, precompiled `map[key]compiledFlag` for one environment plus the revision it
 was built from. The hot path is `atomic.Pointer` load, map lookup, precompiled branch: no locks, no

@@ -34,6 +34,11 @@ type vectorsFile struct {
 		Value    string `json:"value"`
 		Expected uint32 `json:"expected"`
 	} `json:"bucket_cases"`
+	DocumentCases []struct {
+		Name     string          `json:"name"`
+		Document json.RawMessage `json:"document"`
+		Expect   string          `json:"expect"`
+	} `json:"document_cases"`
 }
 
 // TestProtocolVectors runs protocol/testdata/vectors.json, the file every SDK must pass.
@@ -47,9 +52,30 @@ func TestProtocolVectors(t *testing.T) {
 	if err := json.Unmarshal(raw, &v); err != nil {
 		t.Fatalf("decode vectors: %v", err)
 	}
-	if v.VectorsVersion != 1 || len(v.EvaluationCases) == 0 || len(v.BucketCases) == 0 {
-		t.Fatalf("unexpected vectors file: version %d, %d evaluation cases, %d bucket cases",
-			v.VectorsVersion, len(v.EvaluationCases), len(v.BucketCases))
+	if v.VectorsVersion != 1 || len(v.EvaluationCases) == 0 || len(v.BucketCases) == 0 || len(v.DocumentCases) == 0 {
+		t.Fatalf("unexpected vectors file: version %d, %d evaluation cases, %d bucket cases, %d document cases",
+			v.VectorsVersion, len(v.EvaluationCases), len(v.BucketCases), len(v.DocumentCases))
+	}
+	for _, dc := range v.DocumentCases {
+		t.Run("document/"+dc.Name, func(t *testing.T) {
+			var w out.Snapshot
+			err := json.Unmarshal(dc.Document, &w)
+			if err == nil {
+				_, err = api.SnapshotFromWire(w)
+			}
+			switch dc.Expect {
+			case "accept":
+				if err != nil {
+					t.Fatalf("document must be accepted, got %v", err)
+				}
+			case "reject":
+				if err == nil {
+					t.Fatal("document must be rejected")
+				}
+			default:
+				t.Fatalf("unknown expect %q", dc.Expect)
+			}
+		})
 	}
 	for _, tc := range v.EvaluationCases {
 		t.Run(tc.Name, func(t *testing.T) {

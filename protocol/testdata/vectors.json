@@ -85,6 +85,111 @@
       "flag": "healthy",
       "context": {"user_id": "", "attributes": {}},
       "expected": {"value": true, "reason": "STATIC", "error_code": "", "flag_version": 2}
+    },
+    {
+      "name": "version 1 implements no rules",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [{"key": "targeted", "enabled": true, "version": 4, "config": {
+          "rules": [{"conditions": [{"attribute": "country", "operator": "in", "values": ["BR"]}], "serve": {"value": true}}],
+          "fallthrough": {"value": false}}}]},
+      "flag": "targeted",
+      "context": {"user_id": "u1", "attributes": {"country": "BR"}},
+      "expected": {"value": false, "reason": "ERROR", "error_code": "PARSE_ERROR", "flag_version": 4}
+    },
+    {
+      "name": "version 1 implements no splits",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [{"key": "rollout", "enabled": true, "version": 6, "config": {"rules": [],
+          "fallthrough": {"split": {"variations": [{"value": true, "weight": 50000}, {"value": false, "weight": 50000}], "bucket_by": "user_id", "salt": "s"}}}}]},
+      "flag": "rollout",
+      "context": {"user_id": "u1", "attributes": {}},
+      "expected": {"value": false, "reason": "ERROR", "error_code": "PARSE_ERROR", "flag_version": 6}
+    },
+    {
+      "name": "duplicate key",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [
+          {"key": "dup", "enabled": true, "version": 1, "config": {"rules": [], "fallthrough": {}}},
+          {"key": "dup", "enabled": false, "version": 2, "config": {"rules": [], "fallthrough": {}}}
+        ]},
+      "flag": "dup",
+      "context": {"user_id": "", "attributes": {}},
+      "expected": {"value": false, "reason": "ERROR", "error_code": "PARSE_ERROR", "flag_version": 0}
+    },
+    {
+      "name": "mistyped config value is a parse error",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [{"key": "multivariate", "enabled": true, "version": 3, "config": {"rules": [], "fallthrough": {"value": "blue"}}}]},
+      "flag": "multivariate",
+      "context": {"user_id": "", "attributes": {}},
+      "expected": {"value": false, "reason": "ERROR", "error_code": "PARSE_ERROR", "flag_version": 3}
+    },
+    {
+      "name": "an undecodable config does not affect another flag",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [
+          {"key": "multivariate", "enabled": true, "version": 3, "config": {"rules": [], "fallthrough": {"value": "blue"}}},
+          {"key": "healthy", "enabled": true, "version": 2, "config": {"rules": [], "fallthrough": {"value": true}}}
+        ]},
+      "flag": "healthy",
+      "context": {"user_id": "", "attributes": {}},
+      "expected": {"value": true, "reason": "STATIC", "error_code": "", "flag_version": 2}
+    },
+    {
+      "name": "unknown field inside a serve is a parse error",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [{"key": "newer", "enabled": true, "version": 2, "config": {"rules": [], "fallthrough": {"variation": "blue"}}}]},
+      "flag": "newer",
+      "context": {"user_id": "", "attributes": {}},
+      "expected": {"value": false, "reason": "ERROR", "error_code": "PARSE_ERROR", "flag_version": 2}
+    },
+    {
+      "name": "unknown field inside a config is a parse error",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [{"key": "newer", "enabled": true, "version": 2, "config": {"rules": [], "fallthrough": {}, "schedule": {"from": "2027-01-01"}}}]},
+      "flag": "newer",
+      "context": {"user_id": "", "attributes": {}},
+      "expected": {"value": false, "reason": "ERROR", "error_code": "PARSE_ERROR", "flag_version": 2}
+    },
+    {
+      "name": "the reserved unparseable marker is a parse error",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [{"key": "broken", "enabled": true, "version": 5, "config": {"unparseable": true}}]},
+      "flag": "broken",
+      "context": {"user_id": "", "attributes": {}},
+      "expected": {"value": false, "reason": "ERROR", "error_code": "PARSE_ERROR", "flag_version": 5}
+    },
+    {
+      "name": "unknown document and flag fields are ignored",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1, "generated_by": "future",
+        "flags": [{"key": "f", "enabled": true, "version": 1, "owner": "team-a", "config": {"rules": [], "fallthrough": {"value": true}}}]},
+      "flag": "f",
+      "context": {"user_id": "", "attributes": {}},
+      "expected": {"value": true, "reason": "STATIC", "error_code": "", "flag_version": 1}
+    },
+    {
+      "name": "field names are case-sensitive",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [{"key": "f", "enabled": false, "ENABLED": true, "version": 1, "config": {"rules": [], "fallthrough": {"value": true}}}]},
+      "flag": "f",
+      "context": {"user_id": "", "attributes": {}},
+      "expected": {"value": false, "reason": "DISABLED", "error_code": "", "flag_version": 1}
+    },
+    {
+      "name": "null value means absent",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [{"key": "f", "enabled": true, "version": 1, "config": {"rules": null, "fallthrough": {"value": null, "split": null}}}]},
+      "flag": "f",
+      "context": {"user_id": "", "attributes": {}},
+      "expected": {"value": true, "reason": "STATIC", "error_code": "", "flag_version": 1}
+    },
+    {
+      "name": "missing config serves true",
+      "snapshot": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [{"key": "f", "enabled": true, "version": 1}]},
+      "flag": "f",
+      "context": {"user_id": "", "attributes": {}},
+      "expected": {"value": true, "reason": "STATIC", "error_code": "", "flag_version": 1}
     }
   ],
   "bucket_cases": [
@@ -92,7 +197,30 @@
     {"flag_key": "new-checkout", "salt": "s1", "value": "user-1", "expected": 16082},
     {"flag_key": "new-checkout", "salt": "", "value": "user-2", "expected": 41251},
     {"flag_key": "a", "salt": "b", "value": "c", "expected": 65252},
-    {"flag_key": "flag.with-dots_1", "salt": "salt", "value": "ümlaut-user", "expected": 77465},
+    {"flag_key": "flag.with-dots_1", "salt": "salt", "value": "\u00fcmlaut-user", "expected": 77465},
     {"flag_key": "x", "salt": "", "value": "", "expected": 30962}
+  ],
+  "document_cases": [
+    {"name": "minimal valid document", "expect": "accept",
+      "document": {"schema_version": 1, "environment": "production", "revision": 1, "flags": []}},
+    {"name": "missing flags array", "expect": "accept",
+      "document": {"schema_version": 1, "environment": "production", "revision": 1}},
+    {"name": "schema_version 0", "expect": "reject",
+      "document": {"schema_version": 0, "environment": "production", "revision": 1, "flags": []}},
+    {"name": "schema_version 2", "expect": "reject",
+      "document": {"schema_version": 2, "environment": "production", "revision": 1, "flags": []}},
+    {"name": "missing schema_version", "expect": "reject",
+      "document": {"environment": "production", "revision": 1, "flags": []}},
+    {"name": "schema_version is not an integer literal", "expect": "reject",
+      "document": {"schema_version": 1.0, "environment": "production", "revision": 1, "flags": []}},
+    {"name": "schema_version as a string", "expect": "reject",
+      "document": {"schema_version": "1", "environment": "production", "revision": 1, "flags": []}},
+    {"name": "flags is not an array", "expect": "reject",
+      "document": {"schema_version": 1, "environment": "production", "revision": 1, "flags": {}}},
+    {"name": "mistyped enabled", "expect": "reject",
+      "document": {"schema_version": 1, "environment": "production", "revision": 1,
+        "flags": [{"key": "f", "enabled": "yes", "version": 1}]}},
+    {"name": "document is not an object", "expect": "reject",
+      "document": [1, 2, 3]}
   ]
 }

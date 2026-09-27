@@ -1,6 +1,8 @@
 // Package out holds the shapes jollyroger sends across its boundary: JSON API responses and the
 // snapshot protocol. Field names are snake_case and form a public contract (protocol/). Shapes are
-// asserted in adapter tests, never validated on the hot path.
+// asserted in adapter tests, never validated on the hot path. The snapshot is a protocol document
+// that is also READ (bootstrap files, and every SDK), so its decoding follows the protocol's rules
+// exactly; see decode.go and protocol/evaluation-spec.md section 2.
 package out
 
 // SnapshotSchemaVersion is the snapshot protocol version this build reads and writes.

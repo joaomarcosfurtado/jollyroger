@@ -48,13 +48,13 @@ func TestDecode_ConfigErrorIsIsolatedToItsFlag(t *testing.T) {
 func TestDecode_UnknownFieldsInsideConfigMarkItInvalid(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"config":    `{"rules":[],"fallthrough":{},"future":1}`,
-		"serve":     `{"rules":[],"fallthrough":{"variation":"blue"}}`,
-		"rule":      `{"rules":[{"conditions":[],"serve":{},"priority":1}],"fallthrough":{}}`,
-		"condition": `{"rules":[{"conditions":[{"attribute":"a","operator":"in","values":[],"negate":true}],"serve":{}}],"fallthrough":{}}`,
-		"split":     `{"rules":[],"fallthrough":{"split":{"variations":[],"bucket_by":"user_id","salt":"","seed":1}}}`,
-		"variation": `{"rules":[],"fallthrough":{"split":{"variations":[{"value":true,"weight":1,"name":"x"}],"bucket_by":"user_id","salt":""}}}`,
-		"not an object": `5`,
+		"config":                      `{"rules":[],"fallthrough":{},"future":1}`,
+		"serve":                       `{"rules":[],"fallthrough":{"variation":"blue"}}`,
+		"rule":                        `{"rules":[{"conditions":[],"serve":{},"priority":1}],"fallthrough":{}}`,
+		"condition":                   `{"rules":[{"conditions":[{"attribute":"a","operator":"in","values":[],"negate":true}],"serve":{}}],"fallthrough":{}}`,
+		"split":                       `{"rules":[],"fallthrough":{"split":{"variations":[],"bucket_by":"user_id","salt":"","seed":1}}}`,
+		"variation":                   `{"rules":[],"fallthrough":{"split":{"variations":[{"value":true,"weight":1,"name":"x"}],"bucket_by":"user_id","salt":""}}}`,
+		"not an object":               `5`,
 		"reserved unparseable marker": `{"unparseable":true}`,
 	}
 	for name, config := range cases {
