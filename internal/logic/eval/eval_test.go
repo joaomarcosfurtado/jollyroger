@@ -59,7 +59,7 @@ func TestEvaluate(t *testing.T) {
 func TestEvaluate_NilSnapshot(t *testing.T) {
 	t.Parallel()
 	var snap *Snapshot
-	want := model.Result{Value: false, Reason: model.ReasonError, ErrorCode: model.ErrorCodeGeneral}
+	want := model.Result{Value: false, Reason: model.ReasonError, ErrorCode: model.ErrorCodeProviderNotReady}
 	if got := snap.Evaluate("anything", model.Context{}); got != want {
 		t.Fatalf("nil snapshot Evaluate = %+v, want %+v", got, want)
 	}

@@ -58,7 +58,7 @@ func compileFlag(f model.SnapshotFlag) compiledFlag {
 func (s *Snapshot) Evaluate(key string, evalCtx model.Context) model.Result {
 	_ = evalCtx // used by targeting rules and splits in later milestones
 	if s == nil {
-		return model.Result{Reason: model.ReasonError, ErrorCode: model.ErrorCodeGeneral}
+		return model.Result{Reason: model.ReasonError, ErrorCode: model.ErrorCodeProviderNotReady}
 	}
 	f, ok := s.flags[key]
 	if !ok {

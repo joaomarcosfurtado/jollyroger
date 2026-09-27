@@ -27,6 +27,8 @@ const (
 	ErrorCodeFlagNotFound ErrorCode = "FLAG_NOT_FOUND"
 	ErrorCodeParseError   ErrorCode = "PARSE_ERROR"
 	ErrorCodeGeneral      ErrorCode = "GENERAL"
+	// ErrorCodeProviderNotReady means no snapshot has been loaded yet.
+	ErrorCodeProviderNotReady ErrorCode = "PROVIDER_NOT_READY"
 )
 
 // Result is the outcome of one evaluation.
