@@ -23,7 +23,8 @@ func TestClassify(t *testing.T) {
 		{mod, LayerRoot, true},
 		{mod + "/cmd/jollyroger", LayerCmd, true},
 		{mod + "/jollyrogertest", LayerTestHelper, true},
-		{mod + "/storetest", LayerStoreTest, true},
+		{mod + "/internal/storetest", LayerStoreTest, true},
+		{mod + "/storetest", LayerUnclassified, true},
 		{mod + "/internal/archtest", LayerTooling, true},
 		{mod + "/internal/model", LayerModel, true},
 		{mod + "/internal/wire/in", LayerWire, true},
@@ -61,7 +62,10 @@ func TestCheck_AllowedGraphHasNoViolations(t *testing.T) {
 		{ImportPath: mod + "/internal/adapter/db", Imports: []string{mod + "/internal/model", mod + "/internal/wire/db"}},
 		{ImportPath: mod + "/internal/diplomat/postgres", Imports: []string{mod + "/internal/adapter/db", mod + "/internal/model", "database/sql"}},
 		{ImportPath: mod + "/internal/diplomat/httpserver", Imports: []string{mod + "/internal/controller", mod + "/internal/diplomat/ui", "net/http"}},
-		{ImportPath: mod + "/storetest", Imports: []string{mod + "/internal/model", "testing"}},
+		{ImportPath: mod + "/internal/storetest", Imports: []string{mod + "/internal/model", "testing"}},
+		{ImportPath: mod + "/internal/adapter/db", Imports: []string{mod + "/internal/adapter/api", mod + "/internal/wire/db"}},
+		{ImportPath: mod + "/internal/diplomat/sqlite", Imports: []string{mod + "/internal/diplomat/migrate", "database/sql", "embed"}},
+		{ImportPath: mod + "/internal/model", Imports: []string{"golang.org/x/crypto/argon2"}},
 		{ImportPath: mod + "/internal/archtest", Imports: []string{"os/exec"}},
 		{ImportPath: "github.com/other/dep", Imports: []string{"os"}}, // outside the module: ignored
 	}
@@ -92,9 +96,11 @@ func TestCheck_ReportsEachForbiddenCrossing(t *testing.T) {
 		{"adapter does I/O", Package{mod + "/internal/adapter/api", []string{"net/http"}}, []string{"net/http"}},
 		{"store calls controller", Package{mod + "/internal/diplomat/postgres", []string{mod + "/internal/controller"}}, []string{mod + "/internal/controller"}},
 		{"store imports entry point", Package{mod + "/internal/diplomat/postgres", []string{mod + "/internal/diplomat/httpserver"}}, []string{mod + "/internal/diplomat/httpserver"}},
-		{"storetest imports a store", Package{mod + "/storetest", []string{mod + "/internal/diplomat/memory"}}, []string{mod + "/internal/diplomat/memory"}},
+		{"storetest imports a store", Package{mod + "/internal/storetest", []string{mod + "/internal/diplomat/memory"}}, []string{mod + "/internal/diplomat/memory"}},
 		{"internal imports root", Package{mod + "/internal/diplomat/cache", []string{mod}}, []string{mod}},
 		{"unclassified package", Package{mod + "/internal/util", nil}, []string{""}},
+		{"runtime import of a driver", Package{mod + "/internal/diplomat/postgres", []string{"github.com/jackc/pgx/v5/stdlib"}}, []string{"github.com/jackc/pgx/v5/stdlib"}},
+		{"root imports a third-party package", Package{mod, []string{"github.com/some/dep"}}, []string{"github.com/some/dep"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

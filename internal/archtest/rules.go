@@ -18,7 +18,7 @@ const (
 	LayerRoot          Layer = "root"           // the public facade and composition root
 	LayerCmd           Layer = "cmd"            // CLI composition roots
 	LayerTestHelper    Layer = "jollyrogertest" // public test helper for adopters (composition)
-	LayerStoreTest     Layer = "storetest"      // public store conformance suite
+	LayerStoreTest     Layer = "storetest"      // store conformance suite (internal until the store port is public)
 	LayerModel         Layer = "model"          // entities, sentinel errors, ports
 	LayerWire          Layer = "wire"           // boundary shapes
 	LayerLogic         Layer = "logic"          // pure functions
@@ -46,8 +46,8 @@ func allowedInternal(l Layer) (allowed []Layer, restricted bool) {
 		return []Layer{LayerLogic, LayerModel}, true
 	case LayerController:
 		return []Layer{LayerModel, LayerLogic}, true
-	case LayerAdapter:
-		return []Layer{LayerModel, LayerWire, LayerLogic}, true
+	case LayerAdapter: // [5] adapters may compose other pure adapters
+		return []Layer{LayerAdapter, LayerModel, LayerWire, LayerLogic}, true
 	case LayerDiplomat:
 		return []Layer{LayerDiplomat, LayerAdapter, LayerWire, LayerModel, LayerLogic}, true
 	case LayerDiplomatEntry:
@@ -124,7 +124,7 @@ func Classify(module, importPath string) (Layer, bool) {
 		return LayerCmd, true
 	case under(rel, "jollyrogertest"):
 		return LayerTestHelper, true
-	case under(rel, "storetest"):
+	case under(rel, "internal/storetest"):
 		return LayerStoreTest, true
 	case under(rel, "internal/archtest"):
 		return LayerTooling, true
@@ -180,6 +180,14 @@ func Check(module string, pkgs []Package) []Violation {
 				}
 				continue
 			}
+			if isThirdParty(imp) {
+				out = append(out, Violation{
+					Package: p.ImportPath,
+					Import:  imp,
+					Reason:  "the core module must not import third-party packages at run time (test-only imports are fine; optional integrations go in contrib/ modules)",
+				})
+				continue
+			}
 			if forbiddenStd(layer, imp) {
 				out = append(out, Violation{
 					Package: p.ImportPath,
@@ -191,4 +199,14 @@ func Check(module string, pkgs []Package) []Violation {
 	}
 	slices.SortFunc(out, func(a, b Violation) int { return strings.Compare(a.String(), b.String()) })
 	return out
+}
+
+// isThirdParty reports whether imp is neither a standard-library package (no dot in its first
+// path element) nor an allowed dependency of the core module (golang.org/x/crypto).
+func isThirdParty(imp string) bool {
+	first, _, _ := strings.Cut(imp, "/")
+	if !strings.Contains(first, ".") {
+		return false
+	}
+	return imp != "golang.org/x/crypto" && !strings.HasPrefix(imp, "golang.org/x/crypto/")
 }
